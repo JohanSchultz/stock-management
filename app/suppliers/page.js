@@ -1,11 +1,10 @@
 import { AppShell } from "@/components/AppShell";
+import { SupplierForm } from "./SupplierForm";
 
 export default function SuppliersPage() {
   return (
     <AppShell title="Suppliers">
-      <p className="mt-4 text-sm text-zinc-600 dark:text-zinc-400">
-        Manage suppliers.
-      </p>
+      <SupplierForm />
     </AppShell>
   );
 }

@@ -1,11 +1,10 @@
 import { AppShell } from "@/components/AppShell";
+import { LocationForm } from "./LocationForm";
 
 export default function LocationPage() {
   return (
-    <AppShell title="Location">
-      <p className="mt-4 text-sm text-zinc-600 dark:text-zinc-400">
-        Manage locations.
-      </p>
+    <AppShell title="Locations">
+      <LocationForm />
     </AppShell>
   );
 }
