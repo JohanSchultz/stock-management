@@ -121,8 +121,8 @@ function RequiredMarker() {
   );
 }
 
-function showsReturnReason(bookingInTypeLabel) {
-  const label = bookingInTypeLabel.trim();
+function showsReturnReason(bookingOutTypeLabel) {
+  const label = bookingOutTypeLabel.trim();
   return label === "Returned" || label === "Credit";
 }
 
@@ -135,32 +135,32 @@ function reportBackgroundLoadError(context, err, setError) {
   setError(err.message ?? context);
 }
 
-function normalizeBookingInRows(data) {
+function normalizeBookingOutRows(data) {
   if (!Array.isArray(data)) return [];
 
   return data.map((row, index) => ({
     ...row,
-    id: row.id ?? row.booking_in_id ?? null,
+    id: row.id ?? row.booking_out_id ?? null,
     stock_item_id: row.stock_item_id ?? null,
     stock_code: row.stock_code ?? "",
     description: row.description ?? "",
     stock_item: row.stock_item ?? row.descr ?? "",
     qty: row.qty ?? row.quantity ?? null,
     unit_price: row.unit_price ?? row.unitPrice ?? null,
-    booked_in_date: row.booked_in_date ?? row.booking_date ?? null,
+    booked_out_date: row.booked_out_date ?? row.booking_date ?? null,
     supplier_id: row.supplier_id ?? null,
-    booking_in_type_id: row.booking_in_type_id ?? null,
+    booking_out_type_id: row.booking_out_type_id ?? null,
     return_reason_id: row.return_reason_id ?? null,
     comments: row.comments ?? "",
     action_user: row.action_user ?? "",
     rowKey:
       row.id != null
-        ? `booking-in-${row.id}`
-        : `booking-in-row-${index}-${row.stock_code ?? "unknown"}`,
+        ? `booking-out-${row.id}`
+        : `booking-out-row-${index}-${row.stock_code ?? "unknown"}`,
   }));
 }
 
-export function BookingInForm() {
+export function BookingOutForm() {
   useSupabaseIdleRecovery();
 
   const [stockCode, setStockCode] = useState("");
@@ -169,18 +169,15 @@ export function BookingInForm() {
   const [quantity, setQuantity] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
   const [bookingDate, setBookingDate] = useState(todayIsoDate);
-  const [bookingInTypeId, setBookingInTypeId] = useState("");
-  const [bookingInTypeOptions, setBookingInTypeOptions] = useState([]);
-  const [bookingInTypesLoading, setBookingInTypesLoading] = useState(false);
+  const [bookingOutTypeId, setBookingOutTypeId] = useState("");
+  const [bookingOutTypeOptions, setBookingOutTypeOptions] = useState([]);
+  const [bookingOutTypesLoading, setBookingOutTypesLoading] = useState(false);
   const [returnReasonId, setReturnReasonId] = useState("");
   const [returnReasonOptions, setReturnReasonOptions] = useState([]);
   const [returnReasonsLoading, setReturnReasonsLoading] = useState(false);
-  const [formSupplierId, setFormSupplierId] = useState("");
-  const [supplierOptions, setSupplierOptions] = useState([]);
-  const [suppliersLoading, setSuppliersLoading] = useState(false);
   const [comments, setComments] = useState("");
-  const [bookingInId, setBookingInId] = useState("");
-  const [bookingInRows, setBookingInRows] = useState([]);
+  const [bookingOutId, setBookingOutId] = useState("");
+  const [bookingOutRows, setBookingOutRows] = useState([]);
   const [gridFilter, setGridFilter] = useState(GRID_FILTER_ALL);
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -197,21 +194,21 @@ export function BookingInForm() {
     [quantity, unitPrice]
   );
 
-  const loadBookingInTypes = useCallback(async () => {
-    setBookingInTypesLoading(true);
+  const loadBookingOutTypes = useCallback(async () => {
+    setBookingOutTypesLoading(true);
     try {
       const supabase = await prepareSupabaseClient();
       if (!supabase) return;
 
       const { data, error: rpcError } = await supabase.rpc(
-        "pr_booking_in_types_active"
+        "pr_booking_out_types_active"
       );
       if (rpcError) throw rpcError;
-      setBookingInTypeOptions(toOptions(data));
+      setBookingOutTypeOptions(toOptions(data));
     } catch (err) {
-      reportBackgroundLoadError("Failed to load book-in types", err, setError);
+      reportBackgroundLoadError("Failed to load book-out types", err, setError);
     } finally {
-      setBookingInTypesLoading(false);
+      setBookingOutTypesLoading(false);
     }
   }, []);
 
@@ -233,25 +230,7 @@ export function BookingInForm() {
     }
   }, []);
 
-  const loadSuppliers = useCallback(async () => {
-    setSuppliersLoading(true);
-    try {
-      const supabase = await prepareSupabaseClient();
-      if (!supabase) return;
-
-      const { data, error: rpcError } = await supabase.rpc(
-        "pr_suppliers_active"
-      );
-      if (rpcError) throw rpcError;
-      setSupplierOptions(toOptions(data));
-    } catch (err) {
-      reportBackgroundLoadError("Failed to load suppliers", err, setError);
-    } finally {
-      setSuppliersLoading(false);
-    }
-  }, []);
-
-  const loadBookingInRows = useCallback(async (override = {}) => {
+  const loadBookingOutRows = useCallback(async (override = {}) => {
     const filter = override.filter ?? gridFilter;
     const searchCode = (
       override.stockCode !== undefined ? override.stockCode : stockCode
@@ -267,31 +246,31 @@ export function BookingInForm() {
 
       if (filter === GRID_FILTER_BY_STOCK_CODE) {
         if (!searchCode) {
-          setBookingInRows([]);
+          setBookingOutRows([]);
           return;
         }
 
         ({ data, error: rpcError } = await supabase.rpc(
-          "pr_booking_in_by_stock_code",
+          "pr_booking_out_by_stock_code",
           { p_stock_code: searchCode }
         ));
       } else if (filter === GRID_FILTER_LAST_THREE_MONTHS) {
         ({ data, error: rpcError } = await supabase.rpc(
-          "pr_booking_in_last_three_months"
+          "pr_booking_out_last_three_months"
         ));
       } else {
-        ({ data, error: rpcError } = await supabase.rpc("pr_booking_in_all"));
+        ({ data, error: rpcError } = await supabase.rpc("pr_booking_out_all"));
       }
 
       if (rpcError) throw rpcError;
-      setBookingInRows(normalizeBookingInRows(data));
+      setBookingOutRows(normalizeBookingOutRows(data));
     } catch (err) {
       reportBackgroundLoadError(
-        "Failed to load booking in records",
+        "Failed to load booking out records",
         err,
         setError
       );
-      setBookingInRows([]);
+      setBookingOutRows([]);
     } finally {
       setGridLoading(false);
     }
@@ -310,26 +289,25 @@ export function BookingInForm() {
   }, []);
 
   useEffect(() => {
-    loadBookingInTypes();
+    loadBookingOutTypes();
     loadReturnReasons();
-    loadSuppliers();
     loadActionUser();
-  }, [loadBookingInTypes, loadReturnReasons, loadSuppliers, loadActionUser]);
+  }, [loadBookingOutTypes, loadReturnReasons, loadActionUser]);
 
   useEffect(() => {
     if (
       gridFilter === GRID_FILTER_ALL ||
       gridFilter === GRID_FILTER_LAST_THREE_MONTHS
     ) {
-      loadBookingInRows({ filter: gridFilter });
+      loadBookingOutRows({ filter: gridFilter });
     }
-  }, [gridFilter, loadBookingInRows]);
+  }, [gridFilter, loadBookingOutRows]);
 
   useEffect(() => {
     if (gridFilter === GRID_FILTER_BY_STOCK_CODE) {
-      loadBookingInRows({ filter: gridFilter, stockCode });
+      loadBookingOutRows({ filter: gridFilter, stockCode });
     }
-  }, [gridFilter, stockCode, loadBookingInRows]);
+  }, [gridFilter, stockCode, loadBookingOutRows]);
 
   useEffect(() => {
     async function handleVisibilityChange() {
@@ -338,7 +316,7 @@ export function BookingInForm() {
       const supabase = await prepareSupabaseClient();
       if (!supabase) return;
 
-      await loadBookingInRows();
+      await loadBookingOutRows();
       await loadActionUser();
     }
 
@@ -346,23 +324,23 @@ export function BookingInForm() {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [loadBookingInRows, loadActionUser]);
+  }, [loadBookingOutRows, loadActionUser]);
 
-  const selectedBookingInType = bookingInTypeOptions.find(
-    (option) => optionValue(option) === bookingInTypeId
+  const selectedBookingOutType = bookingOutTypeOptions.find(
+    (option) => optionValue(option) === bookingOutTypeId
   );
-  const selectedBookingInTypeLabel = selectedBookingInType
-    ? optionLabel(selectedBookingInType)
+  const selectedBookingOutTypeLabel = selectedBookingOutType
+    ? optionLabel(selectedBookingOutType)
     : "";
-  const returnReasonVisible = showsReturnReason(selectedBookingInTypeLabel);
+  const returnReasonVisible = showsReturnReason(selectedBookingOutTypeLabel);
 
-  function handleBookingInTypeChange(nextBookingInTypeId) {
-    setBookingInTypeId(nextBookingInTypeId);
+  function handleBookingOutTypeChange(nextBookingOutTypeId) {
+    setBookingOutTypeId(nextBookingOutTypeId);
 
-    const nextBookingInType = bookingInTypeOptions.find(
-      (option) => optionValue(option) === nextBookingInTypeId
+    const nextBookingOutType = bookingOutTypeOptions.find(
+      (option) => optionValue(option) === nextBookingOutTypeId
     );
-    const nextLabel = nextBookingInType ? optionLabel(nextBookingInType) : "";
+    const nextLabel = nextBookingOutType ? optionLabel(nextBookingOutType) : "";
 
     if (!showsReturnReason(nextLabel)) {
       setReturnReasonId("");
@@ -395,11 +373,10 @@ export function BookingInForm() {
     setQuantity("");
     setUnitPrice("");
     setBookingDate(todayIsoDate());
-    setBookingInTypeId("");
+    setBookingOutTypeId("");
     setReturnReasonId("");
-    setFormSupplierId("");
     setComments("");
-    setBookingInId("");
+    setBookingOutId("");
     setSelectedId(null);
     setRecordActionUser("");
     setEditMode(false);
@@ -412,20 +389,19 @@ export function BookingInForm() {
     const codeToReload = stockCode.trim();
     setSuccess(successMessage);
     initializeForm();
-    await loadBookingInRows({
+    await loadBookingOutRows({
       filter: gridFilter,
       stockCode:
         gridFilter === GRID_FILTER_BY_STOCK_CODE ? codeToReload : "",
     });
   }
 
-  function buildBookingInPayload() {
+  function buildBookingOutPayload() {
     return {
       p_stock_item_id: parseInteger(stockItemId),
       p_qty: parseFloatValue(quantity),
-      p_booked_in_date: bookingDate,
-      p_supplier_id: parseInteger(formSupplierId),
-      p_booking_in_type_id: parseInteger(bookingInTypeId),
+      p_booked_out_date: bookingDate,
+      p_booking_out_type_id: parseInteger(bookingOutTypeId),
       p_return_reason_id: returnReasonVisible
         ? parseInteger(returnReasonId)
         : null,
@@ -435,10 +411,10 @@ export function BookingInForm() {
   }
 
   function buildChangePayload() {
-    const insertPayload = buildBookingInPayload();
+    const insertPayload = buildBookingOutPayload();
 
     return {
-      p_id: parseInteger(bookingInId),
+      p_id: parseInteger(bookingOutId),
       ...insertPayload,
     };
   }
@@ -447,12 +423,12 @@ export function BookingInForm() {
     if (!stockCode.trim()) return false;
     if (!isNonZeroInteger(stockItemId)) return false;
     if (parseFloatValue(quantity) == null) return false;
-    if (!parseInteger(bookingInTypeId)) return false;
+    if (!parseInteger(bookingOutTypeId)) return false;
     return true;
   }
 
   function isChangeFormValid() {
-    if (parseInteger(bookingInId) == null) return false;
+    if (parseInteger(bookingOutId) == null) return false;
     return isMandatoryFieldsValid();
   }
 
@@ -470,13 +446,13 @@ export function BookingInForm() {
     try {
       const supabase = createClient();
       const { error: rpcError } = await supabase.rpc(
-        "pi_booking_in",
-        buildBookingInPayload()
+        "pi_booking_out",
+        buildBookingOutPayload()
       );
       if (rpcError) throw rpcError;
-      await refreshAfterAction("Booking in saved.");
+      await refreshAfterAction("Booking out saved.");
     } catch (err) {
-      setError(err.message ?? "Failed to save booking in");
+      setError(err.message ?? "Failed to save booking out");
     } finally {
       setLoading(false);
     }
@@ -492,25 +468,25 @@ export function BookingInForm() {
     try {
       const supabase = createClient();
       const { error: rpcError } = await supabase.rpc(
-        "pu_booking_in",
+        "pu_booking_out",
         buildChangePayload()
       );
       if (rpcError) throw rpcError;
-      await refreshAfterAction("Booking in updated.");
+      await refreshAfterAction("Booking out updated.");
     } catch (err) {
-      setError(err.message ?? "Failed to update booking in");
+      setError(err.message ?? "Failed to update booking out");
     } finally {
       setLoading(false);
     }
   }
 
   function handleDeleteClick() {
-    if (!bookingInId) return;
+    if (!bookingOutId) return;
     setDeleteConfirmOpen(true);
   }
 
   async function handleDeleteConfirm() {
-    const id = parseInteger(bookingInId);
+    const id = parseInteger(bookingOutId);
     if (id == null) return;
 
     setLoading(true);
@@ -520,13 +496,13 @@ export function BookingInForm() {
 
     try {
       const supabase = createClient();
-      const { error: rpcError } = await supabase.rpc("pd_booking_in", {
+      const { error: rpcError } = await supabase.rpc("pd_booking_out", {
         p_id: id,
       });
       if (rpcError) throw rpcError;
-      await refreshAfterAction("Booking in deleted.");
+      await refreshAfterAction("Booking out deleted.");
     } catch (err) {
-      setError(err.message ?? "Failed to delete booking in");
+      setError(err.message ?? "Failed to delete booking out");
     } finally {
       setLoading(false);
     }
@@ -540,16 +516,15 @@ export function BookingInForm() {
     );
     setQuantity(row.qty != null ? String(row.qty) : "");
     setUnitPrice(formatUnitPrice(row.unit_price));
-    setBookingDate(toIsoDate(row.booked_in_date));
-    setBookingInTypeId(
-      row.booking_in_type_id != null ? String(row.booking_in_type_id) : ""
+    setBookingDate(toIsoDate(row.booked_out_date));
+    setBookingOutTypeId(
+      row.booking_out_type_id != null ? String(row.booking_out_type_id) : ""
     );
     setReturnReasonId(
       row.return_reason_id != null ? String(row.return_reason_id) : ""
     );
-    setFormSupplierId(row.supplier_id != null ? String(row.supplier_id) : "");
     setComments(row.comments ?? "");
-    setBookingInId(row.id != null ? String(row.id) : "");
+    setBookingOutId(row.id != null ? String(row.id) : "");
     setRecordActionUser(row.action_user ?? "");
     setSelectedId(row.id ?? null);
     setEditMode(true);
@@ -582,7 +557,7 @@ export function BookingInForm() {
       <input
         type="text"
         name="id"
-        value={bookingInId}
+        value={bookingOutId}
         readOnly
         tabIndex={-1}
         aria-hidden="true"
@@ -659,27 +634,27 @@ export function BookingInForm() {
           <div className="flex flex-col gap-4 sm:flex-row sm:flex-1">
             <label className="flex w-full flex-col gap-1 sm:max-w-xs sm:flex-1">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                Book-in type
+                Book-out type
                 <RequiredMarker />
               </span>
               <select
-                value={bookingInTypeId}
-                onChange={(e) => handleBookingInTypeChange(e.target.value)}
-                disabled={bookingInTypesLoading}
+                value={bookingOutTypeId}
+                onChange={(e) => handleBookingOutTypeChange(e.target.value)}
+                disabled={bookingOutTypesLoading}
                 className={`${inputClassName} w-full`}
               >
-                <option value="">
-                  {bookingInTypesLoading ? "Loading…" : SELECT_PLACEHOLDER}
-                </option>
-                {bookingInTypeOptions.map((option, index) => (
-                  <option
-                    key={option.id ?? `booking-in-type-${index}`}
-                    value={optionValue(option)}
-                  >
-                    {optionLabel(option)}
+                  <option value="">
+                    {bookingOutTypesLoading ? "Loading…" : SELECT_PLACEHOLDER}
                   </option>
-                ))}
-              </select>
+                  {bookingOutTypeOptions.map((option, index) => (
+                    <option
+                      key={option.id ?? `booking-out-type-${index}`}
+                      value={optionValue(option)}
+                    >
+                      {optionLabel(option)}
+                    </option>
+                  ))}
+                </select>
             </label>
 
             {returnReasonVisible ? (
@@ -737,30 +712,6 @@ export function BookingInForm() {
           </div>
         </div>
 
-        <label className="flex w-full flex-col gap-1 sm:max-w-xs">
-          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Supplier
-          </span>
-          <select
-            value={formSupplierId}
-            onChange={(e) => setFormSupplierId(e.target.value)}
-            disabled={suppliersLoading}
-            className={inputClassName}
-          >
-            <option value="">
-              {suppliersLoading ? "Loading…" : SELECT_PLACEHOLDER}
-            </option>
-            {supplierOptions.map((option, index) => (
-              <option
-                key={option.id ?? `supplier-${index}`}
-                value={optionValue(option)}
-              >
-                {optionLabel(option)}
-              </option>
-            ))}
-          </select>
-        </label>
-
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Comments
@@ -815,7 +766,7 @@ export function BookingInForm() {
             <button
               type="button"
               onClick={handleChange}
-              disabled={loading || !isChangeFormValid() || !bookingInId}
+              disabled={loading || !isChangeFormValid() || !bookingOutId}
               className="rounded bg-orange-200 px-4 py-2 text-sm font-medium text-orange-900 hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-100 dark:hover:bg-orange-900/60"
             >
               {loading ? "Saving…" : "Change"}
@@ -823,7 +774,7 @@ export function BookingInForm() {
             <button
               type="button"
               onClick={handleDeleteClick}
-              disabled={loading || !bookingInId}
+              disabled={loading || !bookingOutId}
               className="rounded bg-red-200 px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60"
             >
               {loading ? "Saving…" : "Delete"}
@@ -935,7 +886,7 @@ export function BookingInForm() {
           </thead>
           <tbody>
             {gridLoading ? (
-              <tr key="booking-in-loading">
+              <tr key="booking-out-loading">
                 <td
                   colSpan={4}
                   className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
@@ -943,17 +894,17 @@ export function BookingInForm() {
                   Loading…
                 </td>
               </tr>
-            ) : bookingInRows.length === 0 ? (
-              <tr key="booking-in-empty">
+            ) : bookingOutRows.length === 0 ? (
+              <tr key="booking-out-empty">
                 <td
                   colSpan={4}
                   className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
                 >
-                  No booking in records found.
+                  No booking out records found.
                 </td>
               </tr>
             ) : (
-              bookingInRows.map((row) => (
+              bookingOutRows.map((row) => (
                 <tr
                   key={row.rowKey}
                   onClick={() => handleRowClick(row)}
@@ -971,7 +922,7 @@ export function BookingInForm() {
                     {row.qty}
                   </td>
                   <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
-                    {toIsoDate(row.booked_in_date)}
+                    {toIsoDate(row.booked_out_date)}
                   </td>
                 </tr>
               ))

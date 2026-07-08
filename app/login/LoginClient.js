@@ -26,7 +26,7 @@ export function LoginClient() {
     createClient()
       .auth.getSession()
       .then(({ data: { session } }) => {
-        if (session) router.replace("/menu");
+        if (session) router.replace("/menu-dynamic");
       });
   }, [router, searchParams]);
 
@@ -63,7 +63,7 @@ export function LoginClient() {
       const supabase = createClient();
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) throw signInError;
-      router.push("/menu");
+      router.push("/menu-dynamic");
       router.refresh();
     } catch (err) {
       setError(err.message ?? "Login failed");

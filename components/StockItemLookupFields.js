@@ -9,6 +9,15 @@ const inputClassName =
 const adjoinedButtonClassName =
   "shrink-0 rounded-r border border-l-0 border-zinc-300 bg-zinc-50 px-2 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700";
 
+function RequiredMarker() {
+  return (
+    <span className="text-red-600 dark:text-red-400" aria-hidden="true">
+      {" "}
+      *
+    </span>
+  );
+}
+
 function normalizeStockItems(data) {
   if (!Array.isArray(data)) return [];
 
@@ -16,7 +25,8 @@ function normalizeStockItems(data) {
     ...row,
     id: row.id ?? row.stock_item_id ?? null,
     stock_code: row.stock_code ?? "",
-    stock_item: row.stock_item ?? "",
+    stock_item: row.stock_item ?? row.descr ?? "",
+    unit_price: row.unit_price ?? null,
     is_active: row.is_active,
     rowKey:
       row.id != null
@@ -31,6 +41,8 @@ export function StockItemLookupFields({
   onStockCodeChange,
   onDescriptionChange,
   onSelect,
+  onClear,
+  stockCodeRequired = false,
 }) {
   const [itemLookupOpen, setItemLookupOpen] = useState(false);
   const [itemLookupRows, setItemLookupRows] = useState([]);
@@ -95,20 +107,37 @@ export function StockItemLookupFields({
     closeItemLookup();
   }
 
+  function handleClearStockFields() {
+    onStockCodeChange("");
+    onDescriptionChange("");
+    onClear?.();
+  }
+
   return (
     <>
       <div className="flex flex-col gap-4 sm:flex-row">
         <label className="flex w-full flex-col gap-1 sm:w-40 sm:shrink-0">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Stock Code
+            {stockCodeRequired ? <RequiredMarker /> : null}
           </span>
           <div className="flex">
-            <input
-              type="text"
-              value={stockCode}
-              onChange={(e) => onStockCodeChange(e.target.value)}
-              className={`${inputClassName} min-w-0 flex-1 rounded-r-none border-r-0`}
-            />
+            <div className="relative min-w-0 flex-1">
+              <input
+                type="text"
+                value={stockCode}
+                onChange={(e) => onStockCodeChange(e.target.value)}
+                className={`${inputClassName} w-full rounded-r-none border-r-0 pr-7`}
+              />
+              <button
+                type="button"
+                onClick={handleClearStockFields}
+                aria-label="Clear stock code and description"
+                className="absolute right-1 top-1 px-1 text-sm font-bold leading-none text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+              >
+                X
+              </button>
+            </div>
             <button
               type="button"
               onClick={handleStockCodeLookup}

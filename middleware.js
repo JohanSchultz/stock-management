@@ -1,5 +1,12 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
+import { isMenuPathAllowed, isProtectedMenuPath } from "@/lib/menu/routePermissions";
+
+const PUBLIC_PATH_PREFIXES = ["/login", "/auth", "/reset-password"];
+
+function isPublicPath(pathname) {
+  return PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
 
 export async function middleware(request) {
   let response = NextResponse.next({ request });
@@ -27,16 +34,24 @@ export async function middleware(request) {
 
   const { data } = await supabase.auth.getClaims();
   const user = data?.claims;
+  const pathname = request.nextUrl.pathname;
 
-  if (
-    !user &&
-    !request.nextUrl.pathname.startsWith("/login") &&
-    !request.nextUrl.pathname.startsWith("/auth") &&
-    !request.nextUrl.pathname.startsWith("/reset-password")
-  ) {
+  if (!user && !isPublicPath(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
+  }
+
+  if (user && isProtectedMenuPath(pathname)) {
+    const { data: permissions, error } = await supabase.rpc(
+      "get_permissions_by_user"
+    );
+
+    if (error || !isMenuPathAllowed(pathname, permissions)) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/menu-dynamic";
+      return NextResponse.redirect(url);
+    }
   }
 
   return response;

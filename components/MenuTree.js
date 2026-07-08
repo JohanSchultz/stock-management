@@ -11,6 +11,19 @@ function TreeNode({ node, depth = 0 }) {
   const [expanded, setExpanded] = useState(true);
 
   if (!hasChildren) {
+    if (!node.href) {
+      return (
+        <li>
+          <span
+            className="flex w-full items-center rounded px-2 py-1.5 text-left text-sm font-medium text-zinc-800 dark:text-zinc-200"
+            style={{ paddingLeft: `${depth * 1.25 + 0.5}rem` }}
+          >
+            {node.label}
+          </span>
+        </li>
+      );
+    }
+
     const isActive = node.href === pathname;
 
     return (
@@ -61,11 +74,11 @@ function TreeNode({ node, depth = 0 }) {
   );
 }
 
-export function MenuTree() {
+export function MenuTree({ tree = menuTree }) {
   return (
     <nav aria-label="Application menu">
       <ul className="flex flex-col gap-0.5">
-        {menuTree.map((node) => (
+        {tree.map((node) => (
           <TreeNode key={node.id} node={node} />
         ))}
       </ul>
