@@ -164,10 +164,13 @@ function normalizeBookingInRows(data) {
     description: row.description ?? "",
     stock_item: row.stock_item ?? row.descr ?? "",
     qty: row.qty ?? row.quantity ?? null,
+    qty_reserved: row.qty_reserved ?? null,
     unit_price: row.unit_price ?? row.unitPrice ?? null,
     booked_in_date: row.booked_in_date ?? row.booking_date ?? null,
     supplier_id: row.supplier_id ?? null,
     booking_in_type_id: row.booking_in_type_id ?? null,
+    booked_in_type:
+      row.booked_in_type ?? row.booking_in_type ?? row.booking_in_type_descr ?? "",
     return_reason_id: row.return_reason_id ?? null,
     comments: row.comments ?? "",
     action_user: row.action_user ?? "",
@@ -676,6 +679,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
         : null,
       p_comments: comments.trim(),
       p_action_user: actionUser,
+      p_unit_price: parseFloatValue(unitPrice),
     };
   }
 
@@ -1750,7 +1754,13 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                   Description
                 </th>
                 <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                  Quantity
+                  Qty On Hand
+                </th>
+                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  Qty Reserved
+                </th>
+                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  Booked In Type
                 </th>
                 <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
                   Date
@@ -1762,7 +1772,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
             {gridLoading ? (
               <tr key={isOrdersIn ? "orders-in-loading" : "booking-in-loading"}>
                 <td
-                  colSpan={isOrdersIn ? 8 : 5}
+                  colSpan={isOrdersIn ? 8 : 7}
                   className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
                 >
                   Loading…
@@ -1771,7 +1781,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
             ) : bookingInRows.length === 0 ? (
               <tr key={isOrdersIn ? "orders-in-empty" : "booking-in-empty"}>
                 <td
-                  colSpan={isOrdersIn ? 8 : 5}
+                  colSpan={isOrdersIn ? 8 : 7}
                   className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
                 >
                   {isOrdersIn
@@ -1834,6 +1844,12 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                   </td>
                   <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
                     {row.qty}
+                  </td>
+                  <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
+                    {row.qty_reserved ?? ""}
+                  </td>
+                  <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
+                    {row.booked_in_type}
                   </td>
                   <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
                     {toIsoDate(row.booked_in_date)}
