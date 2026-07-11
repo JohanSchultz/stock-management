@@ -556,15 +556,6 @@ export function BookingOutForm() {
     <div className="mt-4 w-full">
       <input
         type="text"
-        name="id"
-        value={bookingOutId}
-        readOnly
-        tabIndex={-1}
-        aria-hidden="true"
-        className="hidden"
-      />
-      <input
-        type="text"
         name="stock_item_id"
         value={stockItemId}
         readOnly
@@ -574,6 +565,20 @@ export function BookingOutForm() {
       />
 
       <form className="flex flex-col gap-4">
+        <label className="flex flex-col gap-1">
+          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            Book Out Number
+          </span>
+          <input
+            type="text"
+            name="id"
+            value={bookingOutId}
+            readOnly
+            tabIndex={-1}
+            className={`${readOnlyInputClassName} w-full sm:max-w-xs`}
+          />
+        </label>
+
         <StockItemLookupFields
           stockCode={stockCode}
           description={description}
@@ -871,6 +876,9 @@ export function BookingOutForm() {
           <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
             <tr>
               <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                No.
+              </th>
+              <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
                 Stock Code
               </th>
               <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
@@ -888,7 +896,7 @@ export function BookingOutForm() {
             {gridLoading ? (
               <tr key="booking-out-loading">
                 <td
-                  colSpan={4}
+                  colSpan={5}
                   className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
                 >
                   Loading…
@@ -897,7 +905,7 @@ export function BookingOutForm() {
             ) : bookingOutRows.length === 0 ? (
               <tr key="booking-out-empty">
                 <td
-                  colSpan={4}
+                  colSpan={5}
                   className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
                 >
                   No booking out records found.
@@ -912,6 +920,9 @@ export function BookingOutForm() {
                     selectedId === row.id ? "bg-sky-50 dark:bg-sky-900/20" : ""
                   }`}
                 >
+                  <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                    {row.id ?? ""}
+                  </td>
                   <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
                     {row.stock_code}
                   </td>

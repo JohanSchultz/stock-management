@@ -59,6 +59,7 @@ function normalizeStockItems(data) {
     id: row.id ?? row.stock_item_id ?? null,
     stock_code: row.stock_code ?? "",
     stock_item: row.stock_item ?? "",
+    unit_qty: row.unit_qty ?? null,
     is_active: row.is_active,
     rowKey:
       row.id != null
@@ -71,6 +72,7 @@ export function StockItemForm() {
   const [stockCode, setStockCode] = useState("");
   const [description, setDescription] = useState("");
   const [unitTypeId, setUnitTypeId] = useState("");
+  const [unitQuantity, setUnitQuantity] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [subcategoryId, setSubcategoryId] = useState("");
   const [unitTypeOptions, setUnitTypeOptions] = useState([]);
@@ -199,6 +201,7 @@ export function StockItemForm() {
     setStockCode("");
     setDescription("");
     setUnitTypeId("");
+    setUnitQuantity("");
     setCategoryId("");
     setSubcategoryId("");
     setSubcategoryOptions([]);
@@ -220,6 +223,7 @@ export function StockItemForm() {
       p_stock_code: stockCode.trim(),
       p_descr: description.trim(),
       p_unit_type_id: parseInteger(unitTypeId),
+      p_unit_qty: parseFloatValue(unitQuantity),
       p_stock_category_id: parseInteger(categoryId),
       p_stock_subcategory_id: parseInteger(subcategoryId),
       p_location_id: parseInteger(locationId),
@@ -244,6 +248,7 @@ export function StockItemForm() {
       payload.p_stock_code &&
       payload.p_descr &&
       payload.p_unit_type_id != null &&
+      payload.p_unit_qty != null &&
       payload.p_stock_category_id != null &&
       payload.p_stock_subcategory_id != null &&
       payload.p_location_id != null &&
@@ -289,6 +294,7 @@ export function StockItemForm() {
     setStockCode(row.stock_code ?? "");
     setDescription(row.stock_item ?? "");
     setUnitTypeId(row.unit_type_id != null ? String(row.unit_type_id) : "");
+    setUnitQuantity(row.unit_qty != null ? String(row.unit_qty) : "");
     setCategoryId(nextCategoryId);
     setWidth(row.width != null ? String(row.width) : "");
     setLength(row.length != null ? String(row.length) : "");
@@ -564,29 +570,45 @@ export function StockItemForm() {
       ) : null}
 
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
-        <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Unit Type
-          </span>
-          <select
-            value={unitTypeId}
-            onChange={(e) => setUnitTypeId(e.target.value)}
-            disabled={unitTypesLoading}
-            className={inputClassName}
-          >
-            <option value="">
-              {unitTypesLoading ? "Loading…" : SELECT_PLACEHOLDER}
-            </option>
-            {unitTypeOptions.map((option, index) => (
-              <option
-                key={option.id ?? `unit-type-${index}`}
-                value={optionValue(option)}
-              >
-                {optionLabel(option)}
+        <div className="flex gap-2">
+          <label className="flex w-[45%] min-w-0 flex-col gap-1">
+            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Unit Type
+            </span>
+            <select
+              value={unitTypeId}
+              onChange={(e) => setUnitTypeId(e.target.value)}
+              disabled={unitTypesLoading}
+              className={inputClassName}
+            >
+              <option value="">
+                {unitTypesLoading ? "Loading…" : SELECT_PLACEHOLDER}
               </option>
-            ))}
-          </select>
-        </label>
+              {unitTypeOptions.map((option, index) => (
+                <option
+                  key={option.id ?? `unit-type-${index}`}
+                  value={optionValue(option)}
+                >
+                  {optionLabel(option)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="flex w-[45%] min-w-0 flex-col gap-1">
+            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Unit Quantity
+            </span>
+            <input
+              type="number"
+              step="any"
+              inputMode="decimal"
+              value={unitQuantity}
+              onChange={(e) => setUnitQuantity(e.target.value)}
+              className={inputClassName}
+            />
+          </label>
+        </div>
 
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
@@ -640,7 +662,7 @@ export function StockItemForm() {
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Width
+            Width (cm)
           </span>
           <input
             type="number"
@@ -654,7 +676,7 @@ export function StockItemForm() {
 
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Length
+            Length (cm)
           </span>
           <input
             type="number"
@@ -668,7 +690,7 @@ export function StockItemForm() {
 
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Depth
+            Height (cm)
           </span>
           <input
             type="number"
@@ -815,6 +837,9 @@ export function StockItemForm() {
               <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
                 Description
               </th>
+              <th className="hidden px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                unit_qty
+              </th>
               <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
                 Active
               </th>
@@ -824,7 +849,7 @@ export function StockItemForm() {
             {gridLoading ? (
               <tr key="stock-items-loading">
                 <td
-                  colSpan={3}
+                  colSpan={4}
                   className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
                 >
                   Loading…
@@ -833,7 +858,7 @@ export function StockItemForm() {
             ) : stockItems.length === 0 ? (
               <tr key="stock-items-empty">
                 <td
-                  colSpan={3}
+                  colSpan={4}
                   className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
                 >
                   No stock items found.
@@ -855,6 +880,9 @@ export function StockItemForm() {
                   </td>
                   <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
                     {row.stock_item}
+                  </td>
+                  <td className="hidden px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                    {row.unit_qty ?? ""}
                   </td>
                   <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
                     {activeLabel(row.is_active)}
