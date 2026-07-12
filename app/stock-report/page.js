@@ -1,11 +1,10 @@
 import { AppShell } from "@/components/AppShell";
+import { StockBalanceReport } from "./StockBalanceReport";
 
 export default function StockReportPage() {
   return (
-    <AppShell title="Stock report">
-      <p className="mt-4 text-sm text-zinc-600 dark:text-zinc-400">
-        View stock report.
-      </p>
+    <AppShell title="Stock Balance Report">
+      <StockBalanceReport />
     </AppShell>
   );
 }

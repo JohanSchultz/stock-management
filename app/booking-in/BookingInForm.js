@@ -258,6 +258,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
   const [loading, setLoading] = useState(false);
   const [gridLoading, setGridLoading] = useState(false);
   const [orderItemsGridLoading, setOrderItemsGridLoading] = useState(false);
+  const [orderItemEditMode, setOrderItemEditMode] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [actionUser, setActionUser] = useState("");
@@ -449,6 +450,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     const id = parseInteger(ordersInId);
     if (id == null) {
       setOrderBookingInRows([]);
+      setOrderItemEditMode(false);
       return;
     }
 
@@ -464,9 +466,11 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
       );
       if (rpcError) throw rpcError;
       setOrderBookingInRows(normalizeOrderBookingInRows(data));
+      setOrderItemEditMode(false);
     } catch (err) {
       reportBackgroundLoadError("Failed to load order items", err, setError);
       setOrderBookingInRows([]);
+      setOrderItemEditMode(false);
     } finally {
       setOrderItemsGridLoading(false);
     }
@@ -607,6 +611,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     setSelectedId(null);
     setSelectedOrderItemId(null);
     setOrderBookingInRows([]);
+    setOrderItemEditMode(false);
     setRecordActionUser("");
     setEditMode(false);
     setDeleteConfirmOpen(false);
@@ -749,6 +754,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
 
   function handleNewOrderItem() {
     clearOrderItemFields();
+    setOrderItemEditMode(false);
   }
 
   function handleOrderItemRowClick(row) {
@@ -764,6 +770,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     );
     setUnitPrice(formatUnitPrice(row.unit_price));
     setSelectedOrderItemId(row.id ?? null);
+    setOrderItemEditMode(true);
     setError("");
     setSuccess("");
   }
@@ -1271,30 +1278,36 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                   >
                     New
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleAdd}
-                    disabled={loading}
-                    className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Add
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleAmend}
-                    disabled={loading}
-                    className="rounded bg-orange-200 px-4 py-2 text-sm font-medium text-orange-900 hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-100 dark:hover:bg-orange-900/60"
-                  >
-                    Amend
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRemoveOrderItem}
-                    disabled={loading}
-                    className="rounded bg-red-200 px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60"
-                  >
-                    Remove
-                  </button>
+                  {!orderItemEditMode && (
+                    <button
+                      type="button"
+                      onClick={handleAdd}
+                      disabled={loading}
+                      className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Add
+                    </button>
+                  )}
+                  {orderItemEditMode && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleAmend}
+                        disabled={loading}
+                        className="rounded bg-orange-200 px-4 py-2 text-sm font-medium text-orange-900 hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-100 dark:hover:bg-orange-900/60"
+                      >
+                        Amend
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRemoveOrderItem}
+                        disabled={loading}
+                        className="rounded bg-red-200 px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60"
+                      >
+                        Remove
+                      </button>
+                    </>
+                  )}
                 </div>
 
                 <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
