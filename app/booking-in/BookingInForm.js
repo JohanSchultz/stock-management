@@ -980,6 +980,9 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
       setEditMode(true);
       setError("");
       setSuccess("");
+      if (row.id != null && isNonZeroInteger(String(row.id))) {
+        setItemsExpanded(true);
+      }
       clearOrderItemFields();
       await loadOrderBookingInRows(row.id);
       return;
