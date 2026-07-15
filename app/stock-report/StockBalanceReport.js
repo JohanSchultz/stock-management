@@ -50,13 +50,20 @@ function getColumnKeys(rows, { excludeId = true } = {}) {
 function normalizeStockMovementRows(data) {
   if (!Array.isArray(data)) return [];
 
-  return data.map((row, index) => ({
-    ...row,
-    rowKey:
-      row.id != null
-        ? `stock-movement-${row.id}`
-        : `stock-movement-row-${index}`,
-  }));
+  return data.map((row, index) => {
+    const bookingId = row.booking_id;
+    const qty = Number(row.qty);
+    const movementType =
+      Number.isFinite(qty) && qty < 0 ? "out" : "in";
+
+    return {
+      ...row,
+      rowKey:
+        bookingId != null
+          ? `stock-movement-${movementType}-${bookingId}`
+          : `stock-movement-row-${index}`,
+    };
+  });
 }
 
 function parseInteger(value) {
