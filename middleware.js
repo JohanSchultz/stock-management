@@ -36,6 +36,12 @@ export async function middleware(request) {
   const user = data?.claims;
   const pathname = request.nextUrl.pathname;
 
+  if (pathname === "/menu") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/menu-dynamic";
+    return NextResponse.redirect(url);
+  }
+
   if (!user && !isPublicPath(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";

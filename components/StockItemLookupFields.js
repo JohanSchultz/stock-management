@@ -43,6 +43,7 @@ export function StockItemLookupFields({
   onSelect,
   onClear,
   stockCodeRequired = false,
+  inputClassName: inputClassNameProp = inputClassName,
 }) {
   const [itemLookupOpen, setItemLookupOpen] = useState(false);
   const [itemLookupRows, setItemLookupRows] = useState([]);
@@ -127,7 +128,7 @@ export function StockItemLookupFields({
                 type="text"
                 value={stockCode}
                 onChange={(e) => onStockCodeChange(e.target.value)}
-                className={`${inputClassName} w-full rounded-r-none border-r-0 pr-7`}
+                className={`${inputClassNameProp} w-full rounded-r-none border-r-0 pr-7`}
               />
               <button
                 type="button"
@@ -157,7 +158,7 @@ export function StockItemLookupFields({
               type="text"
               value={description}
               onChange={(e) => onDescriptionChange(e.target.value)}
-              className={`${inputClassName} min-w-0 flex-1 rounded-r-none border-r-0`}
+              className={`${inputClassNameProp} min-w-0 flex-1 rounded-r-none border-r-0`}
             />
             <button
               type="button"

@@ -21,6 +21,23 @@ const inputClassName =
 const readOnlyInputClassName =
   "rounded border border-zinc-300 bg-zinc-50 px-3 py-2 text-zinc-800 read-only:cursor-default dark:border-zinc-600 dark:bg-zinc-900/50 dark:text-zinc-200";
 
+const ordersNotFullyBookedInHighlightInputClassName =
+  "rounded border border-zinc-300 bg-yellow-100 px-3 py-2 text-zinc-800 dark:border-zinc-600 dark:bg-yellow-900/30 dark:text-zinc-200";
+
+const ordersNotFullyBookedInHighlightReadOnlyInputClassName =
+  "rounded border border-zinc-300 bg-yellow-100 px-3 py-2 text-zinc-800 read-only:cursor-default dark:border-zinc-600 dark:bg-yellow-900/30 dark:text-zinc-200";
+
+const ORDERS_NOT_FULLY_BOOKED_IN_HIDDEN_COLUMNS = new Set([
+  "supplier_id",
+  "stock_item_id",
+  "qty_on_hand",
+  "qty_on_order",
+  "unit_price",
+  "comments",
+  "booking_in_type_id",
+  "return_reason_id",
+]);
+
 const SELECT_PLACEHOLDER = " -SELECT- ";
 const DELETE_CONFIRM_MESSAGE = "Please Confirn To Delete The Selected Entry";
 const ORDER_IN_DELETE_CONFIRM_MESSAGE =
@@ -97,6 +114,21 @@ function computeOrderItemTotalPrice(qtyReserved, qtyDelivered, unitPriceValue) {
   return ((reserved + delivered) * unitPrice).toFixed(2);
 }
 
+function computeOrdersNotFullyBookedInTotalPrice(
+  quantityValue,
+  qtyOnOrderValue,
+  unitPriceValue
+) {
+  const unitPrice = parseFloatValue(unitPriceValue);
+  if (unitPrice == null) return "";
+  const qty =
+    quantityValue === "" || quantityValue == null
+      ? 0
+      : (parseFloatValue(quantityValue) ?? 0);
+  const qtyOnOrder = parseFloatValue(qtyOnOrderValue) ?? 0;
+  return ((qty + qtyOnOrder) * unitPrice).toFixed(2);
+}
+
 function formatUnitPrice(value) {
   if (value == null || value === "") return "";
   return String(value);
@@ -164,7 +196,7 @@ function normalizeBookingInRows(data) {
     description: row.description ?? "",
     stock_item: row.stock_item ?? row.descr ?? "",
     qty: row.qty ?? row.quantity ?? null,
-    qty_reserved: row.qty_reserved ?? null,
+    qty_on_order: row.qty_on_order ?? null,
     unit_price: row.unit_price ?? row.unitPrice ?? null,
     booked_in_date: row.booked_in_date ?? row.booking_date ?? null,
     supplier_id: row.supplier_id ?? null,
@@ -190,14 +222,85 @@ function normalizeOrderBookingInRows(data) {
     stock_item_id: row.stock_item_id ?? null,
     stock_code: row.stock_code ?? "",
     descr: row.descr ?? row.description ?? "",
-    qty_delivered: row.qty_delivered ?? null,
-    qty_reserved: row.qty_reserved ?? null,
+    qty_delivered: row.qty_delivered ?? row.qtyDelivered ?? null,
+    qty_on_order: row.qty_on_order ?? null,
     unit_price: row.unit_price ?? null,
     rowKey:
       row.id != null
         ? `order-booking-in-${row.id}`
         : `order-booking-in-row-${index}-${row.stock_code ?? "unknown"}`,
   }));
+}
+
+function normalizeOrdersNotFullyBookedInRows(data) {
+  if (!Array.isArray(data)) return [];
+
+  return data.map((row, index) => ({
+    ...row,
+    book_in_id: row.book_in_id ?? row.id ?? null,
+    stock_code: row.stock_code ?? "",
+    description: row.description ?? row.descr ?? "",
+    order_in_id: row.order_in_id ?? null,
+    supplier_id: row.supplier_id ?? null,
+    date_placed: row.date_placed ?? null,
+    action_user: row.action_user ?? "",
+    qty_on_hand: row.qty_on_hand ?? null,
+    qty_on_order: row.qty_on_order ?? null,
+    unit_price: row.unit_price ?? null,
+    stock_item_id: row.stock_item_id ?? null,
+    booking_in_type_id: row.booking_in_type_id ?? null,
+    return_reason_id: row.return_reason_id ?? null,
+    comments: row.comments ?? "",
+    rowKey:
+      row.book_in_id != null
+        ? `orders-not-fully-booked-in-${row.book_in_id}`
+        : row.id != null
+          ? `orders-not-fully-booked-in-${row.id}`
+          : `orders-not-fully-booked-in-row-${index}`,
+  }));
+}
+
+function isOrdersNotFullyBookedInHiddenColumn(column) {
+  return ORDERS_NOT_FULLY_BOOKED_IN_HIDDEN_COLUMNS.has(
+    column.trim().toLowerCase()
+  );
+}
+
+function formatGridColumnHeader(key) {
+  const normalized = key.trim().toLowerCase();
+  if (normalized === "totalprice" || normalized === "total_price") {
+    return "Total Price";
+  }
+
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getOrdersNotFullyBookedInColumnKeys(rows) {
+  const keys = new Set();
+
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      if (key !== "rowKey") {
+        keys.add(key);
+      }
+    }
+  }
+
+  return Array.from(keys);
+}
+
+function formatOrdersNotFullyBookedInCellValue(value, column) {
+  if (value == null || value === "") return "";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (
+    column.toLowerCase().includes("date") &&
+    (typeof value === "string" || value instanceof Date)
+  ) {
+    return toIsoDate(value);
+  }
+  return String(value);
 }
 
 function normalizeOrdersInRows(data) {
@@ -231,6 +334,8 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
   const [stockItemId, setStockItemId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [qtyDelivered, setQtyDelivered] = useState("");
+  const [qtyOnOrder, setQtyOnOrder] = useState("");
+  const [orderNumber, setOrderNumber] = useState("");
   const [orderItemId, setOrderItemId] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
   const [bookingDate, setBookingDate] = useState(todayIsoDate);
@@ -259,6 +364,19 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
   const [gridLoading, setGridLoading] = useState(false);
   const [orderItemsGridLoading, setOrderItemsGridLoading] = useState(false);
   const [orderItemEditMode, setOrderItemEditMode] = useState(false);
+  const [ordersNotFullyBookedInExpanded, setOrdersNotFullyBookedInExpanded] =
+    useState(false);
+  const [ordersNotFullyBookedInRows, setOrdersNotFullyBookedInRows] = useState(
+    []
+  );
+  const [
+    ordersNotFullyBookedInGridLoading,
+    setOrdersNotFullyBookedInGridLoading,
+  ] = useState(false);
+  const [ordersNotFullyBookedInSelected, setOrdersNotFullyBookedInSelected] =
+    useState(false);
+  const [selectedOrdersNotFullyBookedInRowKey, setSelectedOrdersNotFullyBookedInRowKey] =
+    useState(null);
   const [editMode, setEditMode] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [actionUser, setActionUser] = useState("");
@@ -270,8 +388,22 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     if (isOrdersIn) {
       return computeOrderItemTotalPrice(quantity, qtyDelivered, unitPrice);
     }
+    if (ordersNotFullyBookedInSelected) {
+      return computeOrdersNotFullyBookedInTotalPrice(
+        quantity,
+        qtyOnOrder,
+        unitPrice
+      );
+    }
     return computeTotalPrice(quantity, unitPrice);
-  }, [isOrdersIn, quantity, qtyDelivered, unitPrice]);
+  }, [
+    isOrdersIn,
+    ordersNotFullyBookedInSelected,
+    quantity,
+    qtyOnOrder,
+    qtyDelivered,
+    unitPrice,
+  ]);
 
   const canExpandItemsSection = useMemo(() => {
     if (!isOrdersIn) return false;
@@ -295,6 +427,122 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
       setItemsExpanded(true);
     }
   }
+
+  function handleOrdersNotFullyBookedInToggle() {
+    setOrdersNotFullyBookedInExpanded((expanded) => !expanded);
+  }
+
+  function clearOrdersNotFullyBookedInSelection() {
+    setOrdersNotFullyBookedInSelected(false);
+    setSelectedOrdersNotFullyBookedInRowKey(null);
+    setOrderNumber("");
+    setQtyOnOrder("");
+  }
+
+  function handleOrdersNotFullyBookedInRowClick(row) {
+    const bookInId = row.book_in_id ?? row.id;
+    const matchingBookingInRow = bookingInRows.find(
+      (gridRow) =>
+        gridRow.id != null && String(gridRow.id) === String(bookInId)
+    );
+
+    setBookingInId(bookInId != null ? String(bookInId) : "");
+    setStockItemId(
+      row.stock_item_id != null ? String(row.stock_item_id) : ""
+    );
+    setStockCode(row.stock_code ?? "");
+    setDescription(row.description ?? "");
+    setOrderNumber(row.order_in_id != null ? String(row.order_in_id) : "");
+    setFormSupplierId(
+      row.supplier_id != null ? String(row.supplier_id) : ""
+    );
+    setBookingDate(toIsoDate(row.date_placed));
+    setRecordActionUser(row.action_user ?? "");
+    setQuantity(row.qty_on_hand != null ? String(row.qty_on_hand) : "");
+    setQtyOnOrder(row.qty_on_order != null ? String(row.qty_on_order) : "");
+    setUnitPrice(formatUnitPrice(row.unit_price));
+    setBookingInTypeId(
+      row.booking_in_type_id != null
+        ? String(row.booking_in_type_id)
+        : matchingBookingInRow?.booking_in_type_id != null
+          ? String(matchingBookingInRow.booking_in_type_id)
+          : ""
+    );
+    setReturnReasonId(
+      row.return_reason_id != null
+        ? String(row.return_reason_id)
+        : matchingBookingInRow?.return_reason_id != null
+          ? String(matchingBookingInRow.return_reason_id)
+          : ""
+    );
+    setComments(row.comments ?? "");
+    setSelectedId(bookInId ?? null);
+    setEditMode(true);
+    setOrdersNotFullyBookedInSelected(true);
+    setSelectedOrdersNotFullyBookedInRowKey(row.rowKey);
+    setError("");
+    setSuccess("");
+  }
+
+  function handleBookingInQuantityChange(nextQuantity) {
+    if (!ordersNotFullyBookedInSelected) {
+      setQuantity(nextQuantity);
+      return;
+    }
+
+    const previousQty = parseFloatValue(quantity);
+
+    if (nextQuantity === "") {
+      if (previousQty == null) {
+        setQuantity("0");
+        return;
+      }
+
+      const previousQtyOnOrder = parseFloatValue(qtyOnOrder) ?? 0;
+      const delta = 0 - previousQty;
+      setQuantity("0");
+      setQtyOnOrder(String(previousQtyOnOrder - delta));
+      return;
+    }
+
+    const nextQty = parseFloatValue(nextQuantity);
+
+    if (previousQty == null || nextQty == null) {
+      setQuantity(nextQuantity);
+      return;
+    }
+
+    const previousQtyOnOrder = parseFloatValue(qtyOnOrder) ?? 0;
+    const maxQty = previousQty + previousQtyOnOrder;
+    const clampedQty = Math.min(nextQty, maxQty);
+    const delta = clampedQty - previousQty;
+    const nextQtyOnOrder = previousQtyOnOrder - delta;
+
+    setQuantity(clampedQty !== nextQty ? String(clampedQty) : nextQuantity);
+    setQtyOnOrder(String(nextQtyOnOrder));
+  }
+
+  const ordersNotFullyBookedInMaxQuantity = useMemo(() => {
+    if (!ordersNotFullyBookedInSelected) return undefined;
+    const qty = parseFloatValue(quantity);
+    const onOrder = parseFloatValue(qtyOnOrder);
+    if (qty == null && onOrder == null) return undefined;
+    return (qty ?? 0) + (onOrder ?? 0);
+  }, [ordersNotFullyBookedInSelected, quantity, qtyOnOrder]);
+
+  const bookingInHighlightActive =
+    !isOrdersIn && ordersNotFullyBookedInSelected;
+  const bookingInInputClassName = bookingInHighlightActive
+    ? ordersNotFullyBookedInHighlightInputClassName
+    : inputClassName;
+  const bookingInReadOnlyInputClassName = bookingInHighlightActive
+    ? ordersNotFullyBookedInHighlightReadOnlyInputClassName
+    : readOnlyInputClassName;
+
+  const ordersNotFullyBookedInColumns = useMemo(
+    () => getOrdersNotFullyBookedInColumnKeys(ordersNotFullyBookedInRows),
+    [ordersNotFullyBookedInRows]
+  );
 
   const loadBookingInTypes = useCallback(async () => {
     setBookingInTypesLoading(true);
@@ -476,6 +724,30 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     }
   }, []);
 
+  const loadOrdersNotFullyBookedInRows = useCallback(async () => {
+    setOrdersNotFullyBookedInGridLoading(true);
+
+    try {
+      const supabase = await prepareSupabaseClient();
+      if (!supabase) return;
+
+      const { data, error: rpcError } = await supabase.rpc(
+        "pr_orders_not_fully_booked_in"
+      );
+      if (rpcError) throw rpcError;
+      setOrdersNotFullyBookedInRows(normalizeOrdersNotFullyBookedInRows(data));
+    } catch (err) {
+      reportBackgroundLoadError(
+        "Failed to load orders not fully booked in",
+        err,
+        setError
+      );
+      setOrdersNotFullyBookedInRows([]);
+    } finally {
+      setOrdersNotFullyBookedInGridLoading(false);
+    }
+  }, []);
+
   const loadActionUser = useCallback(async () => {
     try {
       const supabase = await prepareSupabaseClient();
@@ -527,6 +799,11 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
   }, [gridFilter, stockCode, loadBookingInRows, isOrdersIn]);
 
   useEffect(() => {
+    if (isOrdersIn) return;
+    loadOrdersNotFullyBookedInRows();
+  }, [isOrdersIn, loadOrdersNotFullyBookedInRows]);
+
+  useEffect(() => {
     if (!isOrdersIn) return;
     loadOrdersInRows();
   }, [isOrdersIn, formSupplierId, loadOrdersInRows]);
@@ -542,6 +819,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
         await loadOrdersInRows();
       } else {
         await loadBookingInRows();
+        await loadOrdersNotFullyBookedInRows();
       }
       await loadActionUser();
     }
@@ -550,7 +828,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [loadBookingInRows, loadOrdersInRows, loadActionUser, isOrdersIn]);
+  }, [loadBookingInRows, loadOrdersInRows, loadOrdersNotFullyBookedInRows, loadActionUser, isOrdersIn]);
 
   const selectedBookingInType = bookingInTypeOptions.find(
     (option) => optionValue(option) === bookingInTypeId
@@ -598,6 +876,8 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     setStockItemId("");
     setQuantity("");
     setQtyDelivered("");
+    setQtyOnOrder("");
+    setOrderNumber("");
     setOrderItemId("");
     setUnitPrice("");
     setBookingDate(todayIsoDate());
@@ -612,6 +892,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     setSelectedOrderItemId(null);
     setOrderBookingInRows([]);
     setOrderItemEditMode(false);
+    clearOrdersNotFullyBookedInSelection();
     setRecordActionUser("");
     setEditMode(false);
     setDeleteConfirmOpen(false);
@@ -631,6 +912,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
         stockCode:
           gridFilter === GRID_FILTER_BY_STOCK_CODE ? codeToReload : "",
       });
+      await loadOrdersNotFullyBookedInRows();
     }
   }
 
@@ -644,7 +926,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
       p_action_user: actionUser.trim(),
       p_orders_in_id: parseInteger(bookingInId),
       p_unit_price: parseFloatValue(unitPrice),
-      p_qty_reserved: parseInteger(quantity),
+      p_qty_on_order: parseFloatValue(quantity),
     };
   }
 
@@ -659,7 +941,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
       p_action_user: actionUser.trim(),
       p_orders_in_id: parseInteger(bookingInId),
       p_unit_price: parseFloatValue(unitPrice),
-      p_qty_reserved: parseFloatValue(quantity),
+      p_qty_on_order: parseFloatValue(quantity),
     };
   }
 
@@ -708,6 +990,23 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     };
   }
 
+  function buildOrdersNotFullyBookedInChangePayload() {
+    return {
+      p_id: parseInteger(bookingInId),
+      p_stock_item_id: parseInteger(stockItemId),
+      p_qty: parseFloatValue(quantity),
+      p_booked_in_date: bookingDate,
+      p_supplier_id: parseInteger(formSupplierId),
+      p_booking_in_type_id: 5,
+      p_return_reason_id: 0,
+      p_comments: comments.trim(),
+      p_action_user: recordActionUser.trim(),
+      p_unit_price: parseFloatValue(unitPrice),
+      p_orders_in_id: parseInteger(orderNumber),
+      p_qty_on_order: parseFloatValue(qtyOnOrder),
+    };
+  }
+
   function isMandatoryFieldsValid() {
     if (isOrdersIn) {
       return isNonZeroInteger(formSupplierId);
@@ -716,6 +1015,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     if (!stockCode.trim()) return false;
     if (!isNonZeroInteger(stockItemId)) return false;
     if (parseFloatValue(quantity) == null) return false;
+    if (ordersNotFullyBookedInSelected) return true;
     if (!parseInteger(bookingInTypeId)) return false;
     return true;
   }
@@ -764,7 +1064,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     );
     setStockCode(row.stock_code ?? "");
     setDescription(row.descr ?? "");
-    setQuantity(row.qty_reserved != null ? String(row.qty_reserved) : "");
+    setQuantity(row.qty_on_order != null ? String(row.qty_on_order) : "");
     setQtyDelivered(
       row.qty_delivered != null ? String(row.qty_delivered) : ""
     );
@@ -822,6 +1122,8 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
       );
       if (rpcError) throw rpcError;
       setSuccess("Order item updated.");
+      clearOrderItemFields();
+      setOrderItemEditMode(false);
       await loadOrderBookingInRows(bookingInId);
     } catch (err) {
       setError(err.message ?? "Failed to amend order item");
@@ -849,6 +1151,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
       if (rpcError) throw rpcError;
       setSuccess("Order item removed.");
       clearOrderItemFields();
+      setOrderItemEditMode(false);
       await loadOrderBookingInRows(bookingInId);
     } catch (err) {
       setError(err.message ?? "Failed to remove order item");
@@ -910,7 +1213,9 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
       } else {
         const { error: rpcError } = await supabase.rpc(
           "pu_booking_in",
-          buildChangePayload()
+          ordersNotFullyBookedInSelected
+            ? buildOrdersNotFullyBookedInChangePayload()
+            : buildChangePayload()
         );
         if (rpcError) throw rpcError;
         await refreshAfterAction("Booking in updated.");
@@ -995,6 +1300,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     );
     setQuantity(row.qty != null ? String(row.qty) : "");
     setUnitPrice(formatUnitPrice(row.unit_price));
+    clearOrdersNotFullyBookedInSelection();
     setBookingDate(toIsoDate(row.booked_in_date));
     setBookingInTypeId(
       row.booking_in_type_id != null ? String(row.booking_in_type_id) : ""
@@ -1064,19 +1370,56 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
       ) : null}
 
       <form className="flex flex-col gap-4">
-        <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            {numberFieldLabel}
-          </span>
-          <input
-            type="text"
-            name="id"
-            value={bookingInId}
-            readOnly
-            tabIndex={-1}
-            className={`${readOnlyInputClassName} w-full sm:max-w-xs`}
-          />
-        </label>
+        {!isOrdersIn ? (
+          <div
+            className={`grid grid-cols-1 gap-4 sm:max-w-2xl ${
+              ordersNotFullyBookedInSelected ? "sm:grid-cols-2" : ""
+            }`}
+          >
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                {numberFieldLabel}
+              </span>
+              <input
+                type="text"
+                name="id"
+                value={bookingInId}
+                readOnly
+                tabIndex={-1}
+                className={`${bookingInReadOnlyInputClassName} w-full`}
+              />
+            </label>
+            {ordersNotFullyBookedInSelected ? (
+              <label className="flex flex-col gap-1">
+                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Order Number
+                </span>
+                <input
+                  type="text"
+                  name="order_in_id"
+                  value={orderNumber}
+                  readOnly
+                  tabIndex={-1}
+                  className={`${bookingInReadOnlyInputClassName} w-full`}
+                />
+              </label>
+            ) : null}
+          </div>
+        ) : (
+          <label className="flex flex-col gap-1">
+            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              {numberFieldLabel}
+            </span>
+            <input
+              type="text"
+              name="id"
+              value={bookingInId}
+              readOnly
+              tabIndex={-1}
+              className={`${readOnlyInputClassName} w-full sm:max-w-xs`}
+            />
+          </label>
+        )}
 
         {isOrdersIn ? (
           <>
@@ -1161,15 +1504,15 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
         ) : null}
 
         {isOrdersIn ? (
-          <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
+          <div className="overflow-hidden rounded-lg border border-zinc-300 bg-zinc-300 dark:border-zinc-700 dark:bg-zinc-900">
             <button
               type="button"
               onClick={handleItemsSectionToggle}
               aria-expanded={itemsExpanded}
               disabled={!canExpandItemsSection && !itemsExpanded}
-              className={`flex w-full items-center rounded-t-lg px-3 py-2 text-left text-sm font-medium text-zinc-800 dark:text-zinc-200 ${
+              className={`flex w-full items-center rounded-t-lg bg-zinc-300 px-3 py-2 text-left text-sm font-medium text-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 ${
                 canExpandItemsSection || itemsExpanded
-                  ? "hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+                  ? "hover:bg-zinc-400 dark:hover:bg-zinc-800"
                   : "cursor-not-allowed opacity-60"
               }`}
             >
@@ -1184,7 +1527,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
               Items
             </button>
             {itemsExpanded ? (
-              <div className="flex flex-col gap-4 border-t border-zinc-200 p-4 dark:border-zinc-800">
+              <div className="flex flex-col gap-4 border-t border-zinc-300 bg-zinc-300 p-4 dark:border-zinc-700 dark:bg-zinc-900">
                 <input
                   type="text"
                   name="stock_item_id"
@@ -1220,7 +1563,22 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
                   <label className="flex flex-col gap-1">
                     <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                      Qty Ordered
+                      Qty Delivered
+                    </span>
+                    <input
+                      type="number"
+                      step="any"
+                      inputMode="decimal"
+                      value={qtyDelivered}
+                      readOnly
+                      tabIndex={-1}
+                      className={`${readOnlyInputClassName} w-full`}
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                      Qty On Order
                     </span>
                     <input
                       type="number"
@@ -1234,28 +1592,15 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
 
                   <label className="flex flex-col gap-1">
                     <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                      Qty Delivered
+                      Unit Price
                     </span>
                     <input
                       type="number"
                       step="any"
                       inputMode="decimal"
-                      value={qtyDelivered}
-                      onChange={(e) => setQtyDelivered(e.target.value)}
-                      className={`${inputClassName} w-full`}
-                    />
-                  </label>
-
-                  <label className="flex flex-col gap-1">
-                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                      Unit Price
-                    </span>
-                    <input
-                      type="text"
                       value={unitPrice}
-                      readOnly
-                      tabIndex={-1}
-                      className={`${readOnlyInputClassName} w-full`}
+                      onChange={(e) => setUnitPrice(e.target.value)}
+                      className={`${inputClassName} w-full`}
                     />
                   </label>
 
@@ -1313,9 +1658,9 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                   )}
                 </div>
 
-                <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="overflow-hidden rounded-lg border border-zinc-200 bg-sky-50 dark:border-zinc-800 dark:bg-sky-900/20">
                   <table className="w-full text-left text-sm">
-                    <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
+                    <thead className="border-b border-zinc-200 bg-sky-100 dark:border-zinc-800 dark:bg-sky-900/30">
                       <tr>
                         <th className="hidden px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
                           id
@@ -1330,10 +1675,10 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                           Description
                         </th>
                         <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                          Qty Delivered
+                          Qty On Order
                         </th>
                         <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                          Qty Ordered
+                          Qty Delivered
                         </th>
                         <th className="hidden px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
                           unit_price
@@ -1364,9 +1709,9 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                           <tr
                             key={row.rowKey}
                             onClick={() => handleOrderItemRowClick(row)}
-                            className={`cursor-pointer border-b border-zinc-100 last:border-b-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/50 ${
+                            className={`cursor-pointer border-b border-zinc-100 bg-sky-50 last:border-b-0 hover:bg-sky-100 dark:border-zinc-800 dark:bg-sky-900/20 dark:hover:bg-sky-900/30 ${
                               selectedOrderItemId === row.id
-                                ? "bg-sky-50 dark:bg-sky-900/20"
+                                ? "bg-sky-100 dark:bg-sky-900/30"
                                 : ""
                             }`}
                           >
@@ -1383,10 +1728,10 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                               {row.descr}
                             </td>
                             <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
-                              {row.qty_delivered ?? ""}
+                              {row.qty_on_order ?? ""}
                             </td>
                             <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
-                              {row.qty_reserved ?? ""}
+                              {row.qty_delivered ?? ""}
                             </td>
                             <td className="hidden px-4 py-2 text-zinc-800 dark:text-zinc-200">
                               {row.unit_price ?? ""}
@@ -1413,12 +1758,17 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                 setUnitPrice("");
               }}
               stockCodeRequired
+              inputClassName={bookingInInputClassName}
             />
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div
+              className={`grid grid-cols-1 gap-4 ${
+                ordersNotFullyBookedInSelected ? "sm:grid-cols-4" : "sm:grid-cols-3"
+              }`}
+            >
               <label className="flex flex-col gap-1">
                 <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                  Quantity
+                  Qty To Book In
                   <RequiredMarker />
                 </span>
                 <input
@@ -1426,21 +1776,40 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                   step="any"
                   inputMode="decimal"
                   value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  className={`${inputClassName} w-full`}
+                  max={ordersNotFullyBookedInMaxQuantity}
+                  onChange={(e) => handleBookingInQuantityChange(e.target.value)}
+                  className={`${bookingInInputClassName} w-full`}
                 />
               </label>
+
+              {ordersNotFullyBookedInSelected ? (
+                <label className="flex flex-col gap-1">
+                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    Qty On Order
+                  </span>
+                  <input
+                    type="number"
+                    step="any"
+                    inputMode="decimal"
+                    value={qtyOnOrder}
+                    readOnly
+                    tabIndex={-1}
+                    className={`${bookingInReadOnlyInputClassName} w-full`}
+                  />
+                </label>
+              ) : null}
 
               <label className="flex flex-col gap-1">
                 <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                   Unit Price
                 </span>
                 <input
-                  type="text"
+                  type="number"
+                  step="any"
+                  inputMode="decimal"
                   value={unitPrice}
-                  readOnly
-                  tabIndex={-1}
-                  className={`${readOnlyInputClassName} w-full`}
+                  onChange={(e) => setUnitPrice(e.target.value)}
+                  className={`${bookingInInputClassName} w-full`}
                 />
               </label>
 
@@ -1453,7 +1822,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                   value={totalPrice}
                   readOnly
                   tabIndex={-1}
-                  className={`${readOnlyInputClassName} w-full`}
+                  className={`${bookingInReadOnlyInputClassName} w-full`}
                 />
               </label>
             </div>
@@ -1463,30 +1832,32 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
         {!isOrdersIn ? (
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
             <div className="flex flex-col gap-4 sm:flex-row sm:flex-1">
-              <label className="flex w-full flex-col gap-1 sm:max-w-xs sm:flex-1">
-                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                  Book-in type
-                  <RequiredMarker />
-                </span>
-                <select
-                  value={bookingInTypeId}
-                  onChange={(e) => handleBookingInTypeChange(e.target.value)}
-                  disabled={bookingInTypesLoading}
-                  className={`${inputClassName} w-full`}
-                >
-                  <option value="">
-                    {bookingInTypesLoading ? "Loading…" : SELECT_PLACEHOLDER}
-                  </option>
-                  {bookingInTypeOptions.map((option, index) => (
-                    <option
-                      key={option.id ?? `booking-in-type-${index}`}
-                      value={optionValue(option)}
-                    >
-                      {optionLabel(option)}
+              {!ordersNotFullyBookedInSelected ? (
+                <label className="flex w-full flex-col gap-1 sm:max-w-xs sm:flex-1">
+                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    Book-in type
+                    <RequiredMarker />
+                  </span>
+                  <select
+                    value={bookingInTypeId}
+                    onChange={(e) => handleBookingInTypeChange(e.target.value)}
+                    disabled={bookingInTypesLoading}
+                    className={`${inputClassName} w-full`}
+                  >
+                    <option value="">
+                      {bookingInTypesLoading ? "Loading…" : SELECT_PLACEHOLDER}
                     </option>
-                  ))}
-                </select>
-              </label>
+                    {bookingInTypeOptions.map((option, index) => (
+                      <option
+                        key={option.id ?? `booking-in-type-${index}`}
+                        value={optionValue(option)}
+                      >
+                        {optionLabel(option)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
 
               {returnReasonVisible ? (
                 <label className="flex w-full flex-col gap-1 sm:max-w-xs sm:flex-1">
@@ -1524,7 +1895,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                   type="date"
                   value={bookingDate}
                   onChange={(e) => setBookingDate(e.target.value)}
-                  className={inputClassName}
+                  className={bookingInInputClassName}
                 />
               </label>
 
@@ -1537,7 +1908,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                   value={recordActionUser}
                   readOnly
                   tabIndex={-1}
-                  className={readOnlyInputClassName}
+                  className={bookingInReadOnlyInputClassName}
                 />
               </label>
             </div>
@@ -1553,7 +1924,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
               value={formSupplierId}
               onChange={(e) => setFormSupplierId(e.target.value)}
               disabled={suppliersLoading}
-              className={inputClassName}
+              className={bookingInInputClassName}
             >
               <option value="">
                 {suppliersLoading ? "Loading…" : SELECT_PLACEHOLDER}
@@ -1578,7 +1949,9 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
             value={comments}
             onChange={(e) => setComments(e.target.value)}
             rows={3}
-            className={inputClassName}
+            className={
+              bookingInHighlightActive ? bookingInInputClassName : inputClassName
+            }
           />
         </label>
       </form>
@@ -1629,14 +2002,16 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
             >
               {loading ? "Saving…" : "Change"}
             </button>
-            <button
-              type="button"
-              onClick={handleDeleteClick}
-              disabled={loading || !bookingInId}
-              className="rounded bg-red-200 px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60"
-            >
-              {loading ? "Saving…" : "Delete"}
-            </button>
+            {!ordersNotFullyBookedInSelected || isOrdersIn ? (
+              <button
+                type="button"
+                onClick={handleDeleteClick}
+                disabled={loading || !bookingInId}
+                className="rounded bg-red-200 px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60"
+              >
+                {loading ? "Saving…" : "Delete"}
+              </button>
+            ) : null}
           </>
         )}
       </div>
@@ -1773,7 +2148,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                   Qty On Hand
                 </th>
                 <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                  Qty Reserved
+                  Qty On Order
                 </th>
                 <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
                   Booked In Type
@@ -1862,7 +2237,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                     {row.qty}
                   </td>
                   <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
-                    {row.qty_reserved ?? ""}
+                    {row.qty_on_order ?? ""}
                   </td>
                   <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
                     {row.booked_in_type}
@@ -1876,6 +2251,106 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
           </tbody>
         </table>
       </div>
+
+      {!isOrdersIn ? (
+        <div className="mt-6 overflow-hidden rounded-lg border border-zinc-200 bg-yellow-100 dark:border-zinc-800 dark:bg-yellow-900/30">
+          <button
+            type="button"
+            onClick={handleOrdersNotFullyBookedInToggle}
+            aria-expanded={ordersNotFullyBookedInExpanded}
+            className="flex w-full items-center rounded-t-lg bg-yellow-100 px-3 py-2 text-left text-sm font-medium text-zinc-800 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-zinc-200 dark:hover:bg-yellow-900/40"
+          >
+            <span
+              className={`mr-2 inline-block text-xs text-zinc-500 transition-transform dark:text-zinc-400 ${
+                ordersNotFullyBookedInExpanded ? "rotate-90" : ""
+              }`}
+              aria-hidden
+            >
+              ▶
+            </span>
+            Orders Not Fully Booked In
+          </button>
+          {ordersNotFullyBookedInExpanded ? (
+            <div className="border-t border-zinc-200 bg-yellow-100 p-4 dark:border-zinc-800 dark:bg-yellow-900/30">
+              <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-sky-50 dark:border-zinc-800 dark:bg-sky-900/20">
+                <table className="w-full min-w-max text-left text-sm">
+                  <thead className="border-b border-zinc-200 bg-sky-100 dark:border-zinc-800 dark:bg-sky-900/30">
+                    <tr>
+                      {ordersNotFullyBookedInColumns.map((column) => (
+                        <th
+                          key={column}
+                          className={`px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300 ${
+                            isOrdersNotFullyBookedInHiddenColumn(column)
+                              ? "hidden"
+                              : ""
+                          }`}
+                        >
+                          {formatGridColumnHeader(column)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ordersNotFullyBookedInGridLoading ? (
+                      <tr>
+                        <td
+                          colSpan={Math.max(
+                            ordersNotFullyBookedInColumns.length,
+                            1
+                          )}
+                          className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
+                        >
+                          Loading…
+                        </td>
+                      </tr>
+                    ) : ordersNotFullyBookedInRows.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={Math.max(
+                            ordersNotFullyBookedInColumns.length,
+                            1
+                          )}
+                          className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
+                        >
+                          No orders not fully booked in found.
+                        </td>
+                      </tr>
+                    ) : (
+                      ordersNotFullyBookedInRows.map((row) => (
+                        <tr
+                          key={row.rowKey}
+                          onClick={() => handleOrdersNotFullyBookedInRowClick(row)}
+                          className={`cursor-pointer border-b border-zinc-100 bg-sky-50 last:border-b-0 hover:bg-sky-100 dark:border-zinc-800 dark:bg-sky-900/20 dark:hover:bg-sky-900/30 ${
+                            selectedOrdersNotFullyBookedInRowKey === row.rowKey
+                              ? "bg-sky-100 dark:bg-sky-900/30"
+                              : ""
+                          }`}
+                        >
+                          {ordersNotFullyBookedInColumns.map((column) => (
+                            <td
+                              key={`${row.rowKey}-${column}`}
+                              className={`px-4 py-2 text-zinc-800 dark:text-zinc-200 ${
+                                isOrdersNotFullyBookedInHiddenColumn(column)
+                                  ? "hidden"
+                                  : ""
+                              }`}
+                            >
+                              {formatOrdersNotFullyBookedInCellValue(
+                                row[column],
+                                column
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
