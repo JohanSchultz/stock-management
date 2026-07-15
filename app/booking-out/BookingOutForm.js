@@ -21,8 +21,25 @@ const inputClassName =
 const readOnlyInputClassName =
   "rounded border border-zinc-300 bg-zinc-50 px-3 py-2 text-zinc-800 read-only:cursor-default dark:border-zinc-600 dark:bg-zinc-900/50 dark:text-zinc-200";
 
+const ordersNotFullyDeliveredHighlightInputClassName =
+  "rounded border border-zinc-300 bg-yellow-100 px-3 py-2 text-zinc-800 dark:border-zinc-600 dark:bg-yellow-900/30 dark:text-zinc-200";
+
+const ordersNotFullyDeliveredHighlightReadOnlyInputClassName =
+  "rounded border border-zinc-300 bg-yellow-100 px-3 py-2 text-zinc-800 read-only:cursor-default dark:border-zinc-600 dark:bg-yellow-900/30 dark:text-zinc-200";
+
 const SELECT_PLACEHOLDER = " -SELECT- ";
 const DELETE_CONFIRM_MESSAGE = "Please Confirn To Delete The Selected Entry";
+
+const ORDERS_NOT_FULLY_DELIVERED_HIDDEN_COLUMNS = new Set([
+  "customer_id",
+  "stock_item_id",
+  "qty_on_hand",
+  "qty_reserved",
+  "unit_price",
+  "comments",
+  "booking_out_type_id",
+  "return_reason_id",
+]);
 
 const GRID_FILTER_ALL = "all";
 const GRID_FILTER_BY_STOCK_CODE = "byStockCode";
@@ -54,11 +71,27 @@ function toOptions(data) {
 }
 
 function optionLabel(option) {
-  return option.descr ?? option.description ?? option.name ?? "";
+  return (
+    option.descr ?? option.customer ?? option.description ?? option.name ?? ""
+  );
 }
 
 function optionValue(option) {
-  return option.id != null ? String(option.id) : "";
+  const id = option.id ?? option.customer_id;
+  return id != null ? String(id) : "";
+}
+
+function normalizeCustomerOptions(data) {
+  if (!Array.isArray(data)) return [];
+
+  return data
+    .map((row, index) => ({
+      id: row.id ?? row.customer_id ?? null,
+      descr: row.descr ?? row.customer ?? row.description ?? row.name ?? "",
+      is_active: row.is_active,
+      optionKey: `customer-option-${index}`,
+    }))
+    .sort((left, right) => optionLabel(left).localeCompare(optionLabel(right)));
 }
 
 function parseInteger(value) {
@@ -79,8 +112,44 @@ function computeTotalPrice(quantityValue, unitPriceValue) {
   return (qty * unitPrice).toFixed(2);
 }
 
+function computeOrderItemTotalPrice(qtyReserved, qtyDelivered, unitPriceValue) {
+  const unitPrice = parseFloatValue(unitPriceValue);
+  if (unitPrice == null) return "";
+  const reserved = parseFloatValue(qtyReserved) ?? 0;
+  const delivered = parseFloatValue(qtyDelivered) ?? 0;
+  if (
+    reserved === 0 &&
+    delivered === 0 &&
+    (qtyReserved === "" || qtyReserved == null) &&
+    (qtyDelivered === "" || qtyDelivered == null)
+  ) {
+    return "";
+  }
+  return ((reserved + delivered) * unitPrice).toFixed(2);
+}
+
+function computeOrdersNotFullyDeliveredTotalPrice(
+  quantityValue,
+  qtyReservedValue,
+  unitPriceValue
+) {
+  const unitPrice = parseFloatValue(unitPriceValue);
+  if (unitPrice == null) return "";
+  const qty =
+    quantityValue === "" || quantityValue == null
+      ? 0
+      : (parseFloatValue(quantityValue) ?? 0);
+  const qtyReserved = parseFloatValue(qtyReservedValue) ?? 0;
+  return ((qty + qtyReserved) * unitPrice).toFixed(2);
+}
+
 function formatUnitPrice(value) {
   if (value == null || value === "") return "";
+  return String(value);
+}
+
+function formatGridQtyToBookOut(value) {
+  if (value == null || value === "") return "0";
   return String(value);
 }
 
@@ -126,6 +195,130 @@ function showsReturnReason(bookingOutTypeLabel) {
   return label === "Returned" || label === "Credit";
 }
 
+const BOOKING_OUT_VISIBLE_COLUMNS = [
+  "id",
+  "stock_code",
+  "description",
+  "qty",
+  "qty_reserved",
+  "booked_out_type",
+  "booked_out_date",
+];
+
+const ORDER_BOOKING_OUT_VISIBLE_COLUMNS = [
+  "stock_code",
+  "descr",
+  "qty_reserved",
+  "qty_delivered",
+];
+
+function getBookingOutColumnKeys(rows) {
+  const keys = new Set();
+  const keyByLower = new Map();
+
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      if (key !== "rowKey") {
+        keys.add(key);
+        keyByLower.set(key.trim().toLowerCase(), key);
+      }
+    }
+  }
+
+  const ordered = [];
+  for (const column of BOOKING_OUT_VISIBLE_COLUMNS) {
+    const actualKey = keyByLower.get(column);
+    if (actualKey) {
+      ordered.push(actualKey);
+      keys.delete(actualKey);
+    }
+  }
+
+  return [...ordered, ...Array.from(keys)];
+}
+
+function isBookingOutHiddenColumn(column) {
+  return !BOOKING_OUT_VISIBLE_COLUMNS.includes(column.trim().toLowerCase());
+}
+
+function formatBookingOutColumnHeader(key) {
+  const normalized = key.trim().toLowerCase();
+  if (normalized === "id") return "No.";
+  if (normalized === "qty") return "Qty Booked Out";
+  if (normalized === "booked_out_date") return "Date";
+
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatBookingOutCellValue(value, column) {
+  if (value == null || value === "") return "";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (
+    column.toLowerCase().includes("date") &&
+    (typeof value === "string" || value instanceof Date)
+  ) {
+    return toIsoDate(value);
+  }
+  return String(value);
+}
+
+function getOrderBookingOutColumnKeys(rows) {
+  const keys = new Set();
+  const keyByLower = new Map();
+
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      if (key !== "rowKey") {
+        keys.add(key);
+        keyByLower.set(key.trim().toLowerCase(), key);
+      }
+    }
+  }
+
+  const ordered = [];
+  for (const column of ORDER_BOOKING_OUT_VISIBLE_COLUMNS) {
+    const actualKey = keyByLower.get(column);
+    if (actualKey) {
+      ordered.push(actualKey);
+      keys.delete(actualKey);
+    }
+  }
+
+  return [...ordered, ...Array.from(keys)];
+}
+
+function isOrderBookingOutHiddenColumn(column) {
+  return !ORDER_BOOKING_OUT_VISIBLE_COLUMNS.includes(
+    column.trim().toLowerCase()
+  );
+}
+
+function formatOrderBookingOutColumnHeader(key) {
+  const normalized = key.trim().toLowerCase();
+  if (normalized === "stock_code") return "Stock Code";
+  if (normalized === "descr") return "Description";
+  if (normalized === "qty_reserved") return "Qty Reserved";
+  if (normalized === "qty_delivered") return "Qty Delivered";
+
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatOrderBookingOutCellValue(value, column) {
+  if (value == null || value === "") return "";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (
+    column.toLowerCase().includes("date") &&
+    (typeof value === "string" || value instanceof Date)
+  ) {
+    return toIsoDate(value);
+  }
+  return String(value);
+}
+
 function reportBackgroundLoadError(context, err, setError) {
   if (isFetchFailure(err)) {
     console.warn(`${context}: network error after idle or offline`, err);
@@ -133,6 +326,115 @@ function reportBackgroundLoadError(context, err, setError) {
   }
 
   setError(err.message ?? context);
+}
+
+function normalizeOrderBookingOutRows(data) {
+  if (!Array.isArray(data)) return [];
+
+  return data.map((row, index) => ({
+    ...row,
+    id: row.id ?? null,
+    stock_item_id: row.stock_item_id ?? null,
+    stock_code: row.stock_code ?? "",
+    descr: row.descr ?? row.description ?? "",
+    qty_reserved: row.qty_reserved ?? null,
+    qty_delivered: row.qty_delivered ?? null,
+    unit_price: row.unit_price ?? null,
+    rowKey:
+      row.id != null
+        ? `order-booking-out-${row.id}`
+        : `order-booking-out-row-${index}-${row.stock_code ?? "unknown"}`,
+  }));
+}
+
+function normalizeOrdersNotFullyDeliveredRows(data) {
+  if (!Array.isArray(data)) return [];
+
+  return data.map((row, index) => ({
+    ...row,
+    book_out_id: row.book_out_id ?? row.book_in_id ?? row.id ?? null,
+    stock_code: row.stock_code ?? "",
+    description: row.description ?? row.descr ?? "",
+    order_out_id: row.order_out_id ?? row.order_in_id ?? null,
+    customer_id: row.customer_id ?? row.supplier_id ?? null,
+    customer: row.customer ?? row.supplier ?? "",
+    date_placed: row.date_placed ?? null,
+    action_user: row.action_user ?? "",
+    qty_on_hand: row.qty_on_hand ?? null,
+    qty_reserved: row.qty_reserved ?? row.qty_on_order ?? null,
+    unit_price: row.unit_price ?? null,
+    stock_item_id: row.stock_item_id ?? null,
+    booking_out_type_id:
+      row.booking_out_type_id ?? row.booking_in_type_id ?? null,
+    return_reason_id: row.return_reason_id ?? null,
+    comments: row.comments ?? "",
+    rowKey:
+      row.book_out_id != null
+        ? `orders-not-fully-delivered-${row.book_out_id}`
+        : row.id != null
+          ? `orders-not-fully-delivered-${row.id}`
+          : `orders-not-fully-delivered-row-${index}`,
+  }));
+}
+
+function getOrdersNotFullyDeliveredColumnKeys(rows) {
+  const keys = new Set();
+
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      if (key !== "rowKey") {
+        keys.add(key);
+      }
+    }
+  }
+
+  return Array.from(keys);
+}
+
+function isOrdersNotFullyDeliveredHiddenColumn(column) {
+  return ORDERS_NOT_FULLY_DELIVERED_HIDDEN_COLUMNS.has(
+    column.trim().toLowerCase()
+  );
+}
+
+function formatOrdersNotFullyDeliveredColumnHeader(key) {
+  const normalized = key.trim().toLowerCase();
+  if (normalized === "book_out_id") return "Book Out No.";
+  if (normalized === "order_out_id") return "Order Out No.";
+
+  return formatBookingOutColumnHeader(key);
+}
+
+function formatOrdersNotFullyDeliveredCellValue(value, column) {
+  if (value == null || value === "") return "";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (
+    column.toLowerCase().includes("date") &&
+    (typeof value === "string" || value instanceof Date)
+  ) {
+    return toIsoDate(value);
+  }
+  return String(value);
+}
+
+function normalizeOrdersOutRows(data) {
+  if (!Array.isArray(data)) return [];
+
+  return data.map((row, index) => ({
+    ...row,
+    id: row.id ?? null,
+    customer_id: row.customer_id ?? null,
+    customer: row.customer ?? "",
+    date_placed: row.date_placed ?? null,
+    order_status_id: row.order_status_id ?? null,
+    status: row.status ?? "",
+    comments: row.comments ?? "",
+    action_user: row.action_user ?? "",
+    rowKey:
+      row.id != null
+        ? `orders-out-${row.id}`
+        : `orders-out-row-${index}-${row.customer ?? "unknown"}`,
+  }));
 }
 
 function normalizeBookingOutRows(data) {
@@ -143,9 +445,15 @@ function normalizeBookingOutRows(data) {
     id: row.id ?? row.booking_out_id ?? null,
     stock_item_id: row.stock_item_id ?? null,
     stock_code: row.stock_code ?? "",
-    description: row.description ?? "",
+    description: row.description ?? row.descr ?? "",
     stock_item: row.stock_item ?? row.descr ?? "",
     qty: row.qty ?? row.quantity ?? null,
+    qty_reserved: row.qty_reserved ?? null,
+    booked_out_type:
+      row.booked_out_type ??
+      row.booking_out_type ??
+      row.booking_out_type_descr ??
+      "",
     unit_price: row.unit_price ?? row.unitPrice ?? null,
     booked_out_date: row.booked_out_date ?? row.booking_date ?? null,
     supplier_id: row.supplier_id ?? null,
@@ -160,38 +468,105 @@ function normalizeBookingOutRows(data) {
   }));
 }
 
-export function BookingOutForm() {
+export function BookingOutForm({ variant = "booking-out" } = {}) {
   useSupabaseIdleRecovery();
+
+  const isOrdersOut = variant === "orders-out";
+  const numberFieldLabel = isOrdersOut ? "Order Out Number" : "Book Out Number";
 
   const [stockCode, setStockCode] = useState("");
   const [description, setDescription] = useState("");
   const [stockItemId, setStockItemId] = useState("");
   const [quantity, setQuantity] = useState("");
+  const [qtyReserved, setQtyReserved] = useState("");
+  const [qtyDelivered, setQtyDelivered] = useState("");
+  const [orderItemId, setOrderItemId] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
   const [bookingDate, setBookingDate] = useState(todayIsoDate);
   const [bookingOutTypeId, setBookingOutTypeId] = useState("");
   const [bookingOutTypeOptions, setBookingOutTypeOptions] = useState([]);
   const [bookingOutTypesLoading, setBookingOutTypesLoading] = useState(false);
+  const [formCustomerId, setFormCustomerId] = useState("");
+  const [customerOptions, setCustomerOptions] = useState([]);
+  const [customersLoading, setCustomersLoading] = useState(false);
+  const [orderStatusId, setOrderStatusId] = useState("");
+  const [orderStatusOptions, setOrderStatusOptions] = useState([]);
+  const [orderStatusesLoading, setOrderStatusesLoading] = useState(false);
   const [returnReasonId, setReturnReasonId] = useState("");
   const [returnReasonOptions, setReturnReasonOptions] = useState([]);
   const [returnReasonsLoading, setReturnReasonsLoading] = useState(false);
   const [comments, setComments] = useState("");
   const [bookingOutId, setBookingOutId] = useState("");
   const [bookingOutRows, setBookingOutRows] = useState([]);
+  const [orderBookingOutRows, setOrderBookingOutRows] = useState([]);
+  const [selectedOrderItemId, setSelectedOrderItemId] = useState(null);
+  const [
+    ordersNotFullyDeliveredExpanded,
+    setOrdersNotFullyDeliveredExpanded,
+  ] = useState(false);
+  const [ordersNotFullyDeliveredRows, setOrdersNotFullyDeliveredRows] =
+    useState([]);
+  const [
+    ordersNotFullyDeliveredGridLoading,
+    setOrdersNotFullyDeliveredGridLoading,
+  ] = useState(false);
+  const [ordersNotFullyDeliveredSelected, setOrdersNotFullyDeliveredSelected] =
+    useState(false);
+  const [
+    selectedOrdersNotFullyDeliveredRowKey,
+    setSelectedOrdersNotFullyDeliveredRowKey,
+  ] = useState(null);
+  const [orderNumber, setOrderNumber] = useState("");
   const [gridFilter, setGridFilter] = useState(GRID_FILTER_ALL);
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [gridLoading, setGridLoading] = useState(false);
+  const [orderItemsGridLoading, setOrderItemsGridLoading] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [itemsExpanded, setItemsExpanded] = useState(false);
+  const [orderItemEditMode, setOrderItemEditMode] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [actionUser, setActionUser] = useState("");
   const [recordActionUser, setRecordActionUser] = useState("");
+  const [selectedBookedOutTypeLabel, setSelectedBookedOutTypeLabel] =
+    useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const totalPrice = useMemo(
-    () => computeTotalPrice(quantity, unitPrice),
-    [quantity, unitPrice]
+  const totalPrice = useMemo(() => {
+    if (isOrdersOut) {
+      return computeOrderItemTotalPrice(quantity, qtyDelivered, unitPrice);
+    }
+    if (ordersNotFullyDeliveredSelected) {
+      return computeOrdersNotFullyDeliveredTotalPrice(
+        quantity,
+        qtyReserved,
+        unitPrice
+      );
+    }
+    return computeTotalPrice(quantity, unitPrice);
+  }, [
+    isOrdersOut,
+    ordersNotFullyDeliveredSelected,
+    quantity,
+    qtyReserved,
+    qtyDelivered,
+    unitPrice,
+  ]);
+
+  const bookingOutColumns = useMemo(
+    () => getBookingOutColumnKeys(bookingOutRows),
+    [bookingOutRows]
+  );
+
+  const orderBookingOutColumns = useMemo(
+    () => getOrderBookingOutColumnKeys(orderBookingOutRows),
+    [orderBookingOutRows]
+  );
+
+  const ordersNotFullyDeliveredColumns = useMemo(
+    () => getOrdersNotFullyDeliveredColumnKeys(ordersNotFullyDeliveredRows),
+    [ordersNotFullyDeliveredRows]
   );
 
   const loadBookingOutTypes = useCallback(async () => {
@@ -209,6 +584,48 @@ export function BookingOutForm() {
       reportBackgroundLoadError("Failed to load book-out types", err, setError);
     } finally {
       setBookingOutTypesLoading(false);
+    }
+  }, []);
+
+  const loadOrderStatuses = useCallback(async () => {
+    setOrderStatusesLoading(true);
+    try {
+      const supabase = await prepareSupabaseClient();
+      if (!supabase) return;
+
+      const user = await getSessionUser(supabase);
+      if (!user?.id) {
+        setOrderStatusOptions([]);
+        return;
+      }
+
+      const { data, error: rpcError } = await supabase.rpc("pr_order_status", {
+        p_user_id: user.id,
+      });
+      if (rpcError) throw rpcError;
+      setOrderStatusOptions(toOptions(data));
+    } catch (err) {
+      reportBackgroundLoadError("Failed to load order statuses", err, setError);
+      setOrderStatusOptions([]);
+    } finally {
+      setOrderStatusesLoading(false);
+    }
+  }, []);
+
+  const loadCustomers = useCallback(async () => {
+    setCustomersLoading(true);
+    try {
+      const supabase = await prepareSupabaseClient();
+      if (!supabase) return;
+
+      const { data, error: rpcError } = await supabase.rpc("pr_customer_active");
+      if (rpcError) throw rpcError;
+      setCustomerOptions(normalizeCustomerOptions(data));
+    } catch (err) {
+      reportBackgroundLoadError("Failed to load customers", err, setError);
+      setCustomerOptions([]);
+    } finally {
+      setCustomersLoading(false);
     }
   }, []);
 
@@ -276,38 +693,150 @@ export function BookingOutForm() {
     }
   }, [gridFilter, stockCode]);
 
+  const loadOrdersOutRows = useCallback(async (overrideCustomerId) => {
+    setGridLoading(true);
+
+    try {
+      const supabase = await prepareSupabaseClient();
+      if (!supabase) return;
+
+      const customerParam =
+        overrideCustomerId !== undefined ? overrideCustomerId : formCustomerId;
+      const pCustomerId = parseInteger(customerParam) ?? 0;
+
+      const { data, error: rpcError } = await supabase.rpc(
+        "pr_orders_out_by_customer",
+        { p_customer_id: pCustomerId }
+      );
+      if (rpcError) throw rpcError;
+      setBookingOutRows(normalizeOrdersOutRows(data));
+    } catch (err) {
+      reportBackgroundLoadError("Failed to load orders out records", err, setError);
+      setBookingOutRows([]);
+    } finally {
+      setGridLoading(false);
+    }
+  }, [formCustomerId]);
+
+  const loadOrderBookingOutRows = useCallback(async (ordersOutId) => {
+    const id = parseInteger(ordersOutId);
+    if (id == null) {
+      setOrderBookingOutRows([]);
+      setOrderItemEditMode(false);
+      return;
+    }
+
+    setOrderItemsGridLoading(true);
+
+    try {
+      const supabase = await prepareSupabaseClient();
+      if (!supabase) return;
+
+      const { data, error: rpcError } = await supabase.rpc(
+        "pr_order_booking_out",
+        { p_orders_out_id: id }
+      );
+      if (rpcError) throw rpcError;
+      setOrderBookingOutRows(normalizeOrderBookingOutRows(data));
+      setOrderItemEditMode(false);
+    } catch (err) {
+      reportBackgroundLoadError("Failed to load order items", err, setError);
+      setOrderBookingOutRows([]);
+      setOrderItemEditMode(false);
+    } finally {
+      setOrderItemsGridLoading(false);
+    }
+  }, []);
+
+  const loadOrdersNotFullyDeliveredRows = useCallback(async () => {
+    setOrdersNotFullyDeliveredGridLoading(true);
+
+    try {
+      const supabase = await prepareSupabaseClient();
+      if (!supabase) return;
+
+      const { data, error: rpcError } = await supabase.rpc(
+        "pr_orders_not_fully_delivered"
+      );
+      if (rpcError) throw rpcError;
+      setOrdersNotFullyDeliveredRows(
+        normalizeOrdersNotFullyDeliveredRows(data)
+      );
+    } catch (err) {
+      reportBackgroundLoadError(
+        "Failed to load orders not fully delivered",
+        err,
+        setError
+      );
+      setOrdersNotFullyDeliveredRows([]);
+    } finally {
+      setOrdersNotFullyDeliveredGridLoading(false);
+    }
+  }, []);
+
   const loadActionUser = useCallback(async () => {
     try {
       const supabase = await prepareSupabaseClient();
       if (!supabase) return;
 
       const user = await getSessionUser(supabase);
-      setActionUser(sessionUserLabel(user));
+      const label = sessionUserLabel(user);
+      setActionUser(label);
+      setRecordActionUser((current) => (current === "" ? label : current));
     } catch (err) {
       reportBackgroundLoadError("Failed to load signed-in user", err, setError);
     }
   }, []);
 
   useEffect(() => {
-    loadBookingOutTypes();
-    loadReturnReasons();
-    loadActionUser();
-  }, [loadBookingOutTypes, loadReturnReasons, loadActionUser]);
+    if (!isOrdersOut || editMode || !actionUser) return;
+    setRecordActionUser(actionUser);
+  }, [isOrdersOut, editMode, actionUser]);
 
   useEffect(() => {
+    if (isOrdersOut) {
+      loadOrderStatuses();
+    } else {
+      loadBookingOutTypes();
+      loadReturnReasons();
+    }
+    loadCustomers();
+    loadActionUser();
+  }, [
+    isOrdersOut,
+    loadBookingOutTypes,
+    loadOrderStatuses,
+    loadCustomers,
+    loadReturnReasons,
+    loadActionUser,
+  ]);
+
+  useEffect(() => {
+    if (isOrdersOut) return;
     if (
       gridFilter === GRID_FILTER_ALL ||
       gridFilter === GRID_FILTER_LAST_THREE_MONTHS
     ) {
       loadBookingOutRows({ filter: gridFilter });
     }
-  }, [gridFilter, loadBookingOutRows]);
+  }, [gridFilter, loadBookingOutRows, isOrdersOut]);
 
   useEffect(() => {
+    if (isOrdersOut) return;
     if (gridFilter === GRID_FILTER_BY_STOCK_CODE) {
       loadBookingOutRows({ filter: gridFilter, stockCode });
     }
-  }, [gridFilter, stockCode, loadBookingOutRows]);
+  }, [gridFilter, stockCode, loadBookingOutRows, isOrdersOut]);
+
+  useEffect(() => {
+    if (isOrdersOut) return;
+    loadOrdersNotFullyDeliveredRows();
+  }, [isOrdersOut, loadOrdersNotFullyDeliveredRows]);
+
+  useEffect(() => {
+    if (!isOrdersOut) return;
+    loadOrdersOutRows();
+  }, [isOrdersOut, formCustomerId, loadOrdersOutRows]);
 
   useEffect(() => {
     async function handleVisibilityChange() {
@@ -316,7 +845,12 @@ export function BookingOutForm() {
       const supabase = await prepareSupabaseClient();
       if (!supabase) return;
 
-      await loadBookingOutRows();
+      if (isOrdersOut) {
+        await loadOrdersOutRows();
+      } else {
+        await loadBookingOutRows();
+        await loadOrdersNotFullyDeliveredRows();
+      }
       await loadActionUser();
     }
 
@@ -324,7 +858,13 @@ export function BookingOutForm() {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [loadBookingOutRows, loadActionUser]);
+  }, [
+    isOrdersOut,
+    loadBookingOutRows,
+    loadOrdersOutRows,
+    loadOrdersNotFullyDeliveredRows,
+    loadActionUser,
+  ]);
 
   const selectedBookingOutType = bookingOutTypeOptions.find(
     (option) => optionValue(option) === bookingOutTypeId
@@ -332,7 +872,123 @@ export function BookingOutForm() {
   const selectedBookingOutTypeLabel = selectedBookingOutType
     ? optionLabel(selectedBookingOutType)
     : "";
-  const returnReasonVisible = showsReturnReason(selectedBookingOutTypeLabel);
+  const returnReasonVisible =
+    !isOrdersOut && showsReturnReason(selectedBookingOutTypeLabel);
+
+  function clearOrdersNotFullyDeliveredSelection() {
+    setOrdersNotFullyDeliveredSelected(false);
+    setSelectedOrdersNotFullyDeliveredRowKey(null);
+    setOrderNumber("");
+    setQtyReserved("");
+  }
+
+  function handleOrdersNotFullyDeliveredRowClick(row) {
+    const bookOutId = row.book_out_id ?? row.id;
+    const matchingBookingOutRow = bookingOutRows.find(
+      (gridRow) =>
+        gridRow.id != null && String(gridRow.id) === String(bookOutId)
+    );
+
+    setBookingOutId(bookOutId != null ? String(bookOutId) : "");
+    setStockItemId(
+      row.stock_item_id != null ? String(row.stock_item_id) : ""
+    );
+    setStockCode(row.stock_code ?? "");
+    setDescription(row.description ?? "");
+    setOrderNumber(row.order_out_id != null ? String(row.order_out_id) : "");
+    setFormCustomerId(
+      row.customer_id != null ? String(row.customer_id) : ""
+    );
+    setBookingDate(toIsoDate(row.date_placed));
+    setRecordActionUser(row.action_user ?? "");
+    setQuantity(formatGridQtyToBookOut(row.qty_on_hand));
+    setQtyReserved(row.qty_reserved != null ? String(row.qty_reserved) : "");
+    setUnitPrice(formatUnitPrice(row.unit_price));
+    setBookingOutTypeId(
+      row.booking_out_type_id != null
+        ? String(row.booking_out_type_id)
+        : matchingBookingOutRow?.booking_out_type_id != null
+          ? String(matchingBookingOutRow.booking_out_type_id)
+          : ""
+    );
+    setReturnReasonId(
+      row.return_reason_id != null
+        ? String(row.return_reason_id)
+        : matchingBookingOutRow?.return_reason_id != null
+          ? String(matchingBookingOutRow.return_reason_id)
+          : ""
+    );
+    setComments(row.comments ?? "");
+    setSelectedId(bookOutId ?? null);
+    setSelectedBookedOutTypeLabel("");
+    setEditMode(true);
+    setOrdersNotFullyDeliveredSelected(true);
+    setSelectedOrdersNotFullyDeliveredRowKey(row.rowKey);
+    setError("");
+    setSuccess("");
+  }
+
+  function handleBookingOutQuantityChange(nextQuantity) {
+    if (!ordersNotFullyDeliveredSelected) {
+      setQuantity(nextQuantity);
+      return;
+    }
+
+    const previousQty = parseFloatValue(quantity);
+
+    if (nextQuantity === "") {
+      if (previousQty == null) {
+        setQuantity("0");
+        return;
+      }
+
+      const previousQtyReserved = parseFloatValue(qtyReserved) ?? 0;
+      const delta = 0 - previousQty;
+      setQuantity("0");
+      setQtyReserved(String(previousQtyReserved - delta));
+      return;
+    }
+
+    const nextQty = parseFloatValue(nextQuantity);
+
+    if (previousQty == null || nextQty == null) {
+      setQuantity(nextQuantity);
+      return;
+    }
+
+    const previousQtyReserved = parseFloatValue(qtyReserved) ?? 0;
+    const maxQty = previousQty + previousQtyReserved;
+    const clampedQty = Math.min(Math.max(nextQty, 0), maxQty);
+    const delta = clampedQty - previousQty;
+    const nextQtyReserved = previousQtyReserved - delta;
+
+    setQuantity(clampedQty !== nextQty ? String(clampedQty) : nextQuantity);
+    setQtyReserved(String(nextQtyReserved));
+  }
+
+  const ordersNotFullyDeliveredMaxQuantity = useMemo(() => {
+    if (!ordersNotFullyDeliveredSelected) return undefined;
+    const qty = parseFloatValue(quantity);
+    const reserved = parseFloatValue(qtyReserved);
+    if (qty == null && reserved == null) return undefined;
+    return (qty ?? 0) + (reserved ?? 0);
+  }, [ordersNotFullyDeliveredSelected, quantity, qtyReserved]);
+
+  const bookingOutHighlightActive =
+    !isOrdersOut && ordersNotFullyDeliveredSelected;
+  const bookingOutInputClassName = bookingOutHighlightActive
+    ? ordersNotFullyDeliveredHighlightInputClassName
+    : inputClassName;
+  const bookingOutReadOnlyInputClassName = bookingOutHighlightActive
+    ? ordersNotFullyDeliveredHighlightReadOnlyInputClassName
+    : readOnlyInputClassName;
+
+  const isMainGridOrderBookingOutSelected =
+    !isOrdersOut &&
+    editMode &&
+    !ordersNotFullyDeliveredSelected &&
+    selectedBookedOutTypeLabel.trim() === "Order" &&
+    (parseFloatValue(qtyReserved) ?? 0) > 0;
 
   function handleBookingOutTypeChange(nextBookingOutTypeId) {
     setBookingOutTypeId(nextBookingOutTypeId);
@@ -371,14 +1027,25 @@ export function BookingOutForm() {
     setDescription("");
     setStockItemId("");
     setQuantity("");
+    setQtyReserved("");
+    setQtyDelivered("");
+    setOrderItemId("");
     setUnitPrice("");
     setBookingDate(todayIsoDate());
     setBookingOutTypeId("");
+    setFormCustomerId("");
+    setOrderStatusId("");
     setReturnReasonId("");
     setComments("");
     setBookingOutId("");
     setSelectedId(null);
-    setRecordActionUser("");
+    setSelectedBookedOutTypeLabel("");
+    setOrderBookingOutRows([]);
+    setSelectedOrderItemId(null);
+    setRecordActionUser(isOrdersOut ? actionUser : "");
+    setItemsExpanded(false);
+    setOrderItemEditMode(false);
+    clearOrdersNotFullyDeliveredSelection();
     setEditMode(false);
     setDeleteConfirmOpen(false);
     setError("");
@@ -387,42 +1054,115 @@ export function BookingOutForm() {
 
   async function refreshAfterAction(successMessage) {
     const codeToReload = stockCode.trim();
+    const customerToReload = formCustomerId;
     setSuccess(successMessage);
     initializeForm();
-    await loadBookingOutRows({
-      filter: gridFilter,
-      stockCode:
-        gridFilter === GRID_FILTER_BY_STOCK_CODE ? codeToReload : "",
-    });
+    if (isOrdersOut) {
+      await loadOrdersOutRows(customerToReload);
+    } else {
+      await loadBookingOutRows({
+        filter: gridFilter,
+        stockCode:
+          gridFilter === GRID_FILTER_BY_STOCK_CODE ? codeToReload : "",
+      });
+      await loadOrdersNotFullyDeliveredRows();
+    }
   }
 
-  function buildBookingOutPayload() {
+  function buildOrderBookingOutPayload() {
+    return {
+      p_stock_item_id: parseInteger(stockItemId),
+      p_qty: parseFloatValue(qtyDelivered),
+      p_booked_out_date: bookingDate,
+      p_customer_id: parseInteger(formCustomerId),
+      p_booking_out_type_id: 6,
+      p_action_user: recordActionUser.trim(),
+      p_orders_out_id: parseInteger(bookingOutId),
+      p_unit_price: parseFloatValue(unitPrice),
+      p_qty_reserved: parseFloatValue(quantity),
+    };
+  }
+
+  function buildOrderBookingOutAmendPayload() {
+    return {
+      p_id: parseInteger(orderItemId),
+      ...buildOrderBookingOutPayload(),
+    };
+  }
+
+  function buildOrderOutPayload() {
+    return {
+      p_customer_id: parseInteger(formCustomerId),
+      p_date_placed: bookingDate,
+      p_action_user: recordActionUser.trim(),
+      p_comments: comments.trim(),
+    };
+  }
+
+  function buildOrderOutChangePayload() {
+    return {
+      p_id: parseInteger(bookingOutId),
+      p_customer_id: parseInteger(formCustomerId),
+      p_date_placed: bookingDate,
+      p_date_delivered: "1900-01-01",
+      p_order_status_id: parseInteger(orderStatusId),
+      p_comments: comments.trim(),
+    };
+  }
+
+  function buildBookingOutMutationPayload() {
     return {
       p_stock_item_id: parseInteger(stockItemId),
       p_qty: parseFloatValue(quantity),
       p_booked_out_date: bookingDate,
       p_booking_out_type_id: parseInteger(bookingOutTypeId),
-      p_return_reason_id: returnReasonVisible
-        ? parseInteger(returnReasonId)
-        : null,
+      p_return_reason_id: parseInteger(returnReasonId),
       p_comments: comments.trim(),
-      p_action_user: actionUser,
+      p_action_user: recordActionUser.trim(),
+      p_customer_id: parseInteger(formCustomerId),
+      p_orders_out_id: 0,
+      p_unit_price: parseFloatValue(unitPrice),
+      p_qty_reserved: parseFloatValue(qtyReserved) ?? 0,
     };
   }
 
-  function buildChangePayload() {
-    const insertPayload = buildBookingOutPayload();
+  function buildBookingOutInsertPayload() {
+    return buildBookingOutMutationPayload();
+  }
 
+  function buildChangePayload() {
     return {
       p_id: parseInteger(bookingOutId),
-      ...insertPayload,
+      ...buildBookingOutMutationPayload(),
+    };
+  }
+
+  function buildOrdersNotFullyDeliveredChangePayload() {
+    return {
+      p_id: parseInteger(bookingOutId),
+      p_stock_item_id: parseInteger(stockItemId),
+      p_qty: parseFloatValue(quantity),
+      p_booked_out_date: bookingDate,
+      p_customer_id: parseInteger(formCustomerId),
+      p_booking_out_type_id: 6,
+      p_return_reason_id: 0,
+      p_comments: comments.trim(),
+      p_action_user: recordActionUser.trim(),
+      p_unit_price: parseFloatValue(unitPrice),
+      p_orders_out_id: parseInteger(orderNumber),
+      p_qty_reserved: parseFloatValue(qtyReserved),
     };
   }
 
   function isMandatoryFieldsValid() {
+    if (isOrdersOut) {
+      return isNonZeroInteger(formCustomerId);
+    }
+
     if (!stockCode.trim()) return false;
     if (!isNonZeroInteger(stockItemId)) return false;
     if (parseFloatValue(quantity) == null) return false;
+    if (ordersNotFullyDeliveredSelected) return true;
     if (!parseInteger(bookingOutTypeId)) return false;
     return true;
   }
@@ -436,6 +1176,169 @@ export function BookingOutForm() {
     return isMandatoryFieldsValid();
   }
 
+  function isAddOrderItemFormValid() {
+    return (
+      isNonZeroInteger(stockItemId) &&
+      isNonZeroInteger(bookingOutId) &&
+      parseFloatValue(quantity) != null
+    );
+  }
+
+  function isAmendOrderItemFormValid() {
+    return (
+      isNonZeroInteger(orderItemId) &&
+      isNonZeroInteger(stockItemId) &&
+      parseFloatValue(quantity) != null
+    );
+  }
+
+  function isRemoveOrderItemFormValid() {
+    return isNonZeroInteger(orderItemId);
+  }
+
+  function clearOrderItemFields() {
+    setStockCode("");
+    setDescription("");
+    setStockItemId("");
+    setQuantity("");
+    setQtyReserved("");
+    setQtyDelivered("");
+    setOrderItemId("");
+    setUnitPrice("");
+    setSelectedOrderItemId(null);
+  }
+
+  function handleNewOrderItem() {
+    clearOrderItemFields();
+    setOrderItemEditMode(false);
+  }
+
+  function handleOrderItemRowClick(row) {
+    setOrderItemId(row.id != null ? String(row.id) : "");
+    setStockItemId(
+      row.stock_item_id != null ? String(row.stock_item_id) : ""
+    );
+    setStockCode(row.stock_code ?? "");
+    setDescription(row.descr ?? "");
+    setQtyDelivered(
+      row.qty_delivered != null ? String(row.qty_delivered) : ""
+    );
+    setQuantity(row.qty_reserved != null ? String(row.qty_reserved) : "");
+    setUnitPrice(formatUnitPrice(row.unit_price));
+    setSelectedOrderItemId(row.id ?? null);
+    setOrderItemEditMode(true);
+    setError("");
+    setSuccess("");
+  }
+
+  async function handleAddOrderItem() {
+    if (!isAddOrderItemFormValid()) {
+      setError("Stock item, order out number, and qty reserved are required.");
+      setSuccess("");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const supabase = createClient();
+      const { error: rpcError } = await supabase.rpc(
+        "pi_order_booking_out",
+        buildOrderBookingOutPayload()
+      );
+      if (rpcError) throw rpcError;
+      setSuccess("Order booking out saved.");
+      clearOrderItemFields();
+      setOrderItemEditMode(false);
+      await loadOrderBookingOutRows(bookingOutId);
+    } catch (err) {
+      setError(err.message ?? "Failed to add order booking out");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleAmendOrderItem() {
+    if (!isAmendOrderItemFormValid()) {
+      setError("Select an order item to amend and enter qty reserved.");
+      setSuccess("");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const supabase = createClient();
+      const { error: rpcError } = await supabase.rpc(
+        "pu_order_booking_out",
+        buildOrderBookingOutAmendPayload()
+      );
+      if (rpcError) throw rpcError;
+      setSuccess("Order item updated.");
+      clearOrderItemFields();
+      setOrderItemEditMode(false);
+      await loadOrderBookingOutRows(bookingOutId);
+    } catch (err) {
+      setError(err.message ?? "Failed to amend order item");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRemoveOrderItem() {
+    if (!isRemoveOrderItemFormValid()) {
+      setError("Select an order item to remove.");
+      setSuccess("");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const supabase = createClient();
+      const { error: rpcError } = await supabase.rpc("pd_order_booking_out", {
+        p_id: parseInteger(orderItemId),
+      });
+      if (rpcError) throw rpcError;
+      setSuccess("Order item removed.");
+      clearOrderItemFields();
+      setOrderItemEditMode(false);
+      await loadOrderBookingOutRows(bookingOutId);
+    } catch (err) {
+      setError(err.message ?? "Failed to remove order item");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleAdd() {
+    if (!isSaveFormValid()) return;
+
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const supabase = createClient();
+      const { error: rpcError } = await supabase.rpc(
+        "pi_order_out",
+        buildOrderOutPayload()
+      );
+      if (rpcError) throw rpcError;
+      await refreshAfterAction("Order out saved.");
+    } catch (err) {
+      setError(err.message ?? "Failed to add order out");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSave() {
     if (!isSaveFormValid()) return;
 
@@ -447,7 +1350,7 @@ export function BookingOutForm() {
       const supabase = createClient();
       const { error: rpcError } = await supabase.rpc(
         "pi_booking_out",
-        buildBookingOutPayload()
+        buildBookingOutInsertPayload()
       );
       if (rpcError) throw rpcError;
       await refreshAfterAction("Booking out saved.");
@@ -467,14 +1370,28 @@ export function BookingOutForm() {
 
     try {
       const supabase = createClient();
-      const { error: rpcError } = await supabase.rpc(
-        "pu_booking_out",
-        buildChangePayload()
-      );
-      if (rpcError) throw rpcError;
-      await refreshAfterAction("Booking out updated.");
+      if (isOrdersOut) {
+        const { error: rpcError } = await supabase.rpc(
+          "pu_order_out",
+          buildOrderOutChangePayload()
+        );
+        if (rpcError) throw rpcError;
+        await refreshAfterAction("Order out updated.");
+      } else {
+        const { error: rpcError } = await supabase.rpc(
+          "pu_booking_out",
+          ordersNotFullyDeliveredSelected
+            ? buildOrdersNotFullyDeliveredChangePayload()
+            : buildChangePayload()
+        );
+        if (rpcError) throw rpcError;
+        await refreshAfterAction("Booking out updated.");
+      }
     } catch (err) {
-      setError(err.message ?? "Failed to update booking out");
+      setError(
+        err.message ??
+          (isOrdersOut ? "Failed to update order out" : "Failed to update booking out")
+      );
     } finally {
       setLoading(false);
     }
@@ -509,12 +1426,42 @@ export function BookingOutForm() {
   }
 
   async function handleRowClick(row) {
+    if (isOrdersOut) {
+      setOrderStatusId(
+        row.order_status_id != null ? String(row.order_status_id) : ""
+      );
+      setFormCustomerId(
+        row.customer_id != null ? String(row.customer_id) : ""
+      );
+      setBookingDate(
+        toIsoDate(row.date_placed ?? row.order_placed_date ?? row.booked_out_date)
+      );
+      setComments(row.comments ?? "");
+      setBookingOutId(row.id != null ? String(row.id) : "");
+      setRecordActionUser(row.action_user ?? "");
+      setSelectedId(row.id ?? null);
+      setEditMode(true);
+      setError("");
+      setSuccess("");
+      if (row.id != null && isNonZeroInteger(String(row.id))) {
+        setItemsExpanded(true);
+      }
+      clearOrderItemFields();
+      await loadOrderBookingOutRows(row.id);
+      return;
+    }
+
     setStockCode(row.stock_code ?? "");
     setDescription(row.description ?? "");
     setStockItemId(
       row.stock_item_id != null ? String(row.stock_item_id) : ""
     );
-    setQuantity(row.qty != null ? String(row.qty) : "");
+
+    clearOrdersNotFullyDeliveredSelection();
+    setQuantity(formatGridQtyToBookOut(row.qty));
+    setQtyReserved(
+      row.qty_reserved != null ? String(row.qty_reserved) : ""
+    );
     setUnitPrice(formatUnitPrice(row.unit_price));
     setBookingDate(toIsoDate(row.booked_out_date));
     setBookingOutTypeId(
@@ -527,6 +1474,7 @@ export function BookingOutForm() {
     setBookingOutId(row.id != null ? String(row.id) : "");
     setRecordActionUser(row.action_user ?? "");
     setSelectedId(row.id ?? null);
+    setSelectedBookedOutTypeLabel(row.booked_out_type ?? "");
     setEditMode(true);
     setError("");
     setSuccess("");
@@ -552,115 +1500,271 @@ export function BookingOutForm() {
     initializeForm();
   }
 
+  function handleOrdersNotFullyDeliveredToggle() {
+    setOrdersNotFullyDeliveredExpanded((expanded) => !expanded);
+  }
+
+  function handleItemsSectionToggle() {
+    setItemsExpanded((current) => !current);
+  }
+
   return (
     <div className="mt-4 w-full">
-      <input
-        type="text"
-        name="stock_item_id"
-        value={stockItemId}
-        readOnly
-        tabIndex={-1}
-        aria-hidden="true"
-        className="hidden"
-      />
+      {!isOrdersOut ? (
+        <input
+          type="text"
+          name="stock_item_id"
+          value={stockItemId}
+          readOnly
+          tabIndex={-1}
+          aria-hidden="true"
+          className="hidden"
+        />
+      ) : null}
 
       <form className="flex flex-col gap-4">
-        <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Book Out Number
-          </span>
-          <input
-            type="text"
-            name="id"
-            value={bookingOutId}
-            readOnly
-            tabIndex={-1}
-            className={`${readOnlyInputClassName} w-full sm:max-w-xs`}
-          />
-        </label>
-
-        <StockItemLookupFields
-          stockCode={stockCode}
-          description={description}
-          onStockCodeChange={setStockCode}
-          onDescriptionChange={setDescription}
-          onSelect={handleStockItemSelect}
-          onClear={() => {
-            setStockItemId("");
-            setUnitPrice("");
-          }}
-          stockCodeRequired
-        />
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              Quantity
-              <RequiredMarker />
-            </span>
-            <input
-              type="number"
-              step="any"
-              inputMode="decimal"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              className={`${inputClassName} w-full`}
-            />
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              Unit Price
-            </span>
-            <input
-              type="text"
-              value={unitPrice}
-              readOnly
-              tabIndex={-1}
-              className={`${readOnlyInputClassName} w-full`}
-            />
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              Total Price
-            </span>
-            <input
-              type="text"
-              value={totalPrice}
-              readOnly
-              tabIndex={-1}
-              className={`${readOnlyInputClassName} w-full`}
-            />
-          </label>
-        </div>
-
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
-          <div className="flex flex-col gap-4 sm:flex-row sm:flex-1">
-            <label className="flex w-full flex-col gap-1 sm:max-w-xs sm:flex-1">
+        {!isOrdersOut ? (
+          <div
+            className={`grid grid-cols-1 gap-4 sm:max-w-2xl ${
+              ordersNotFullyDeliveredSelected ? "sm:grid-cols-2" : ""
+            }`}
+          >
+            <label className="flex flex-col gap-1">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                Book-out type
+                {numberFieldLabel}
+              </span>
+              <input
+                type="text"
+                name="id"
+                value={bookingOutId}
+                readOnly
+                tabIndex={-1}
+                className={`${bookingOutReadOnlyInputClassName} w-full`}
+              />
+            </label>
+            {ordersNotFullyDeliveredSelected ? (
+              <label className="flex flex-col gap-1">
+                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Order Number
+                </span>
+                <input
+                  type="text"
+                  name="order_out_id"
+                  value={orderNumber}
+                  readOnly
+                  tabIndex={-1}
+                  className={`${bookingOutReadOnlyInputClassName} w-full`}
+                />
+              </label>
+            ) : null}
+          </div>
+        ) : (
+          <label className="flex flex-col gap-1">
+            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              {numberFieldLabel}
+            </span>
+            <input
+              type="text"
+              name="id"
+              value={bookingOutId}
+              readOnly
+              tabIndex={-1}
+              className={`${readOnlyInputClassName} w-full sm:max-w-xs`}
+            />
+          </label>
+        )}
+
+        {!isOrdersOut ? (
+          <StockItemLookupFields
+            stockCode={stockCode}
+            description={description}
+            onStockCodeChange={setStockCode}
+            onDescriptionChange={setDescription}
+            onSelect={handleStockItemSelect}
+            onClear={() => {
+              setStockItemId("");
+              setUnitPrice("");
+            }}
+            stockCodeRequired
+            inputClassName={bookingOutInputClassName}
+          />
+        ) : null}
+
+        {!isOrdersOut ? (
+          <div
+            className={`grid grid-cols-1 gap-4 ${
+              ordersNotFullyDeliveredSelected ? "sm:grid-cols-4" : "sm:grid-cols-3"
+            }`}
+          >
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Qty To Book Out
                 <RequiredMarker />
               </span>
-              <select
-                value={bookingOutTypeId}
-                onChange={(e) => handleBookingOutTypeChange(e.target.value)}
-                disabled={bookingOutTypesLoading}
-                className={`${inputClassName} w-full`}
-              >
-                  <option value="">
-                    {bookingOutTypesLoading ? "Loading…" : SELECT_PLACEHOLDER}
-                  </option>
-                  {bookingOutTypeOptions.map((option, index) => (
-                    <option
-                      key={option.id ?? `booking-out-type-${index}`}
-                      value={optionValue(option)}
-                    >
-                      {optionLabel(option)}
-                    </option>
-                  ))}
-                </select>
+              <input
+                type="number"
+                step="any"
+                inputMode="decimal"
+                value={quantity}
+                max={ordersNotFullyDeliveredMaxQuantity}
+                onChange={(e) => handleBookingOutQuantityChange(e.target.value)}
+                className={`${bookingOutInputClassName} w-full`}
+              />
             </label>
+
+            {ordersNotFullyDeliveredSelected ? (
+              <label className="flex flex-col gap-1">
+                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Qty Reserved
+                </span>
+                <input
+                  type="number"
+                  step="any"
+                  inputMode="decimal"
+                  value={qtyReserved}
+                  readOnly
+                  tabIndex={-1}
+                  className={`${bookingOutReadOnlyInputClassName} w-full`}
+                />
+              </label>
+            ) : null}
+
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Unit Price
+              </span>
+              <input
+                type={ordersNotFullyDeliveredSelected ? "number" : "text"}
+                step={ordersNotFullyDeliveredSelected ? "any" : undefined}
+                inputMode={ordersNotFullyDeliveredSelected ? "decimal" : undefined}
+                value={unitPrice}
+                readOnly={!ordersNotFullyDeliveredSelected}
+                tabIndex={ordersNotFullyDeliveredSelected ? undefined : -1}
+                onChange={
+                  ordersNotFullyDeliveredSelected
+                    ? (e) => setUnitPrice(e.target.value)
+                    : undefined
+                }
+                className={`${
+                  ordersNotFullyDeliveredSelected
+                    ? bookingOutInputClassName
+                    : bookingOutReadOnlyInputClassName
+                } w-full`}
+              />
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Total Price
+              </span>
+              <input
+                type="text"
+                value={totalPrice}
+                readOnly
+                tabIndex={-1}
+                className={`${bookingOutReadOnlyInputClassName} w-full`}
+              />
+            </label>
+          </div>
+        ) : null}
+
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
+          <div className="flex flex-col gap-4 sm:flex-row sm:flex-1 sm:items-start">
+            <div className="flex w-full flex-col gap-4 sm:max-w-xs sm:flex-1">
+              {isOrdersOut ? (
+                <label className="flex w-full flex-col gap-1">
+                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    Customer
+                    <RequiredMarker />
+                  </span>
+                  <select
+                    value={formCustomerId}
+                    onChange={(e) => setFormCustomerId(e.target.value)}
+                    disabled={customersLoading}
+                    className={`${inputClassName} w-full`}
+                  >
+                    <option value="">
+                      {customersLoading ? "Loading…" : SELECT_PLACEHOLDER}
+                    </option>
+                    {customerOptions.map((option, index) => (
+                      <option
+                        key={option.optionKey ?? `customer-${index}`}
+                        value={optionValue(option)}
+                      >
+                        {optionLabel(option)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                !ordersNotFullyDeliveredSelected ? (
+                  <label className="flex w-full flex-col gap-1">
+                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                      Book-out type
+                      <RequiredMarker />
+                    </span>
+                    <select
+                      value={bookingOutTypeId}
+                      onChange={(e) =>
+                        handleBookingOutTypeChange(e.target.value)
+                      }
+                      disabled={bookingOutTypesLoading}
+                      className={`${inputClassName} w-full`}
+                    >
+                      <option value="">
+                        {bookingOutTypesLoading ? "Loading…" : SELECT_PLACEHOLDER}
+                      </option>
+                      {bookingOutTypeOptions.map((option, index) => (
+                        <option
+                          key={option.id ?? `booking-out-type-${index}`}
+                          value={optionValue(option)}
+                        >
+                          {optionLabel(option)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null
+              )}
+
+              {isOrdersOut ? (
+                <label className="flex w-full flex-col gap-1">
+                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    Order Placed Date
+                  </span>
+                  <input
+                    type="date"
+                    value={bookingDate}
+                    onChange={(e) => setBookingDate(e.target.value)}
+                    className={inputClassName}
+                  />
+                </label>
+              ) : (
+                <label className="flex w-full flex-col gap-1">
+                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    Customer
+                  </span>
+                  <select
+                    value={formCustomerId}
+                    onChange={(e) => setFormCustomerId(e.target.value)}
+                    disabled={customersLoading}
+                    className={`${bookingOutInputClassName} w-full`}
+                  >
+                    <option value="">
+                      {customersLoading ? "Loading…" : SELECT_PLACEHOLDER}
+                    </option>
+                    {customerOptions.map((option, index) => (
+                      <option
+                        key={option.optionKey ?? `customer-${index}`}
+                        value={optionValue(option)}
+                      >
+                        {optionLabel(option)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
 
             {returnReasonVisible ? (
               <label className="flex w-full flex-col gap-1 sm:max-w-xs sm:flex-1">
@@ -690,17 +1794,43 @@ export function BookingOutForm() {
           </div>
 
           <div className="flex w-full flex-col gap-4 sm:max-w-xs lg:w-48 lg:shrink-0">
-            <label className="flex flex-col gap-1">
-              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                Date
-              </span>
-              <input
-                type="date"
-                value={bookingDate}
-                onChange={(e) => setBookingDate(e.target.value)}
-                className={inputClassName}
-              />
-            </label>
+            {isOrdersOut ? (
+              <label className="flex flex-col gap-1">
+                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Order Status
+                </span>
+                <select
+                  value={orderStatusId}
+                  onChange={(e) => setOrderStatusId(e.target.value)}
+                  disabled={orderStatusesLoading}
+                  className={`${inputClassName} w-full`}
+                >
+                  <option value="">
+                    {orderStatusesLoading ? "Loading…" : SELECT_PLACEHOLDER}
+                  </option>
+                  {orderStatusOptions.map((option, index) => (
+                    <option
+                      key={option.id ?? `order-status-${index}`}
+                      value={optionValue(option)}
+                    >
+                      {optionLabel(option)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label className="flex flex-col gap-1">
+                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Date
+                </span>
+                <input
+                  type="date"
+                  value={bookingDate}
+                  onChange={(e) => setBookingDate(e.target.value)}
+                  className={bookingOutInputClassName}
+                />
+              </label>
+            )}
 
             <label className="flex flex-col gap-1">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
@@ -711,11 +1841,236 @@ export function BookingOutForm() {
                 value={recordActionUser}
                 readOnly
                 tabIndex={-1}
-                className={readOnlyInputClassName}
+                className={bookingOutReadOnlyInputClassName}
               />
             </label>
           </div>
         </div>
+
+        {isOrdersOut ? (
+          <div className="overflow-hidden rounded-lg border border-zinc-300 bg-zinc-300 dark:border-zinc-700 dark:bg-zinc-900">
+            <button
+              type="button"
+              onClick={handleItemsSectionToggle}
+              aria-expanded={itemsExpanded}
+              className="flex w-full items-center rounded-t-lg bg-zinc-300 px-3 py-2 text-left text-sm font-medium text-zinc-800 hover:bg-zinc-400 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              <span
+                className={`mr-2 inline-block text-xs text-zinc-500 transition-transform dark:text-zinc-400 ${
+                  itemsExpanded ? "rotate-90" : ""
+                }`}
+                aria-hidden
+              >
+                ▶
+              </span>
+              Items
+            </button>
+            {itemsExpanded ? (
+              <div className="flex flex-col gap-4 border-t border-zinc-300 bg-zinc-300 p-4 dark:border-zinc-700 dark:bg-zinc-900">
+                <input
+                  type="text"
+                  name="stock_item_id"
+                  value={stockItemId}
+                  readOnly
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  className="hidden"
+                />
+                <input
+                  type="text"
+                  name="order_item_id"
+                  value={orderItemId}
+                  readOnly
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  className="hidden"
+                />
+
+                <StockItemLookupFields
+                  stockCode={stockCode}
+                  description={description}
+                  onStockCodeChange={setStockCode}
+                  onDescriptionChange={setDescription}
+                  onSelect={handleStockItemSelect}
+                  onClear={() => {
+                    setStockItemId("");
+                    setUnitPrice("");
+                  }}
+                  stockCodeRequired
+                />
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                      Qty Delivered
+                    </span>
+                    <input
+                      type="number"
+                      step="any"
+                      inputMode="decimal"
+                      value={qtyDelivered}
+                      readOnly
+                      tabIndex={-1}
+                      className={`${readOnlyInputClassName} w-full`}
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                      Qty Reserved
+                      <RequiredMarker />
+                    </span>
+                    <input
+                      type="number"
+                      step="any"
+                      inputMode="decimal"
+                      value={quantity}
+                      onChange={(e) => setQuantity(e.target.value)}
+                      className={`${inputClassName} w-full`}
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                      Unit Price
+                    </span>
+                    <input
+                      type="number"
+                      step="any"
+                      inputMode="decimal"
+                      value={unitPrice}
+                      onChange={(e) => setUnitPrice(e.target.value)}
+                      className={`${inputClassName} w-full`}
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                      Total Price
+                    </span>
+                    <input
+                      type="text"
+                      value={totalPrice}
+                      readOnly
+                      tabIndex={-1}
+                      className={`${readOnlyInputClassName} w-full`}
+                    />
+                  </label>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleNewOrderItem}
+                    className="rounded bg-sky-200 px-4 py-2 text-sm font-medium text-sky-900 hover:bg-sky-300 dark:bg-sky-900/40 dark:text-sky-100 dark:hover:bg-sky-900/60"
+                  >
+                    New
+                  </button>
+                  {!orderItemEditMode && (
+                    <button
+                      type="button"
+                      onClick={handleAddOrderItem}
+                      disabled={loading || !isAddOrderItemFormValid()}
+                      className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Add
+                    </button>
+                  )}
+                  {orderItemEditMode && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleAmendOrderItem}
+                        disabled={loading || !isAmendOrderItemFormValid()}
+                        className="rounded bg-orange-200 px-4 py-2 text-sm font-medium text-orange-900 hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-100 dark:hover:bg-orange-900/60"
+                      >
+                        Amend
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRemoveOrderItem}
+                        disabled={loading}
+                        className="rounded bg-red-200 px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60"
+                      >
+                        Remove
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                <div className="overflow-hidden rounded-lg border border-zinc-200 bg-sky-50 dark:border-zinc-800 dark:bg-sky-900/20">
+                  <table className="w-full text-left text-sm">
+                    <thead className="border-b border-zinc-200 bg-sky-100 dark:border-zinc-800 dark:bg-sky-900/30">
+                      <tr>
+                        {orderBookingOutColumns.map((column) => (
+                          <th
+                            key={column}
+                            className={`px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300 ${
+                              isOrderBookingOutHiddenColumn(column)
+                                ? "hidden"
+                                : ""
+                            }`}
+                          >
+                            {formatOrderBookingOutColumnHeader(column)}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {orderItemsGridLoading ? (
+                        <tr>
+                          <td
+                            colSpan={Math.max(orderBookingOutColumns.length, 1)}
+                            className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
+                          >
+                            Loading…
+                          </td>
+                        </tr>
+                      ) : orderBookingOutRows.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={Math.max(orderBookingOutColumns.length, 1)}
+                            className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
+                          >
+                            No order items found.
+                          </td>
+                        </tr>
+                      ) : (
+                        orderBookingOutRows.map((row) => (
+                          <tr
+                            key={row.rowKey}
+                            onClick={() => handleOrderItemRowClick(row)}
+                            className={`cursor-pointer border-b border-zinc-100 bg-sky-50 last:border-b-0 hover:bg-sky-100 dark:border-zinc-800 dark:bg-sky-900/20 dark:hover:bg-sky-900/30 ${
+                              selectedOrderItemId === row.id
+                                ? "bg-sky-100 dark:bg-sky-900/30"
+                                : ""
+                            }`}
+                          >
+                            {orderBookingOutColumns.map((column) => (
+                              <td
+                                key={`${row.rowKey}-${column}`}
+                                className={`px-4 py-2 text-zinc-800 dark:text-zinc-200 ${
+                                  isOrderBookingOutHiddenColumn(column)
+                                    ? "hidden"
+                                    : ""
+                                }`}
+                              >
+                                {formatOrderBookingOutCellValue(
+                                  row[column],
+                                  column
+                                )}
+                              </td>
+                            ))}
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
@@ -725,7 +2080,9 @@ export function BookingOutForm() {
             value={comments}
             onChange={(e) => setComments(e.target.value)}
             rows={3}
-            className={inputClassName}
+            className={
+              bookingOutHighlightActive ? bookingOutInputClassName : inputClassName
+            }
           />
         </label>
       </form>
@@ -751,7 +2108,7 @@ export function BookingOutForm() {
         {!editMode && (
           <button
             type="button"
-            onClick={handleSave}
+            onClick={isOrdersOut ? handleAdd : handleSave}
             disabled={loading || !isSaveFormValid()}
             className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -768,22 +2125,33 @@ export function BookingOutForm() {
             >
               New
             </button>
-            <button
-              type="button"
-              onClick={handleChange}
-              disabled={loading || !isChangeFormValid() || !bookingOutId}
-              className="rounded bg-orange-200 px-4 py-2 text-sm font-medium text-orange-900 hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-100 dark:hover:bg-orange-900/60"
-            >
-              {loading ? "Saving…" : "Change"}
-            </button>
-            <button
-              type="button"
-              onClick={handleDeleteClick}
-              disabled={loading || !bookingOutId}
-              className="rounded bg-red-200 px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60"
-            >
-              {loading ? "Saving…" : "Delete"}
-            </button>
+            {isMainGridOrderBookingOutSelected ? (
+              <p className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                To edit an ORDER item, open it from the yellow section at the
+                bottom.
+              </p>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={handleChange}
+                  disabled={loading || !isChangeFormValid() || !bookingOutId}
+                  className="rounded bg-orange-200 px-4 py-2 text-sm font-medium text-orange-900 hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-100 dark:hover:bg-orange-900/60"
+                >
+                  {loading ? "Saving…" : "Change"}
+                </button>
+                {!ordersNotFullyDeliveredSelected || isOrdersOut ? (
+                  <button
+                    type="button"
+                    onClick={handleDeleteClick}
+                    disabled={loading || !bookingOutId}
+                    className="rounded bg-red-200 px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60"
+                  >
+                    {loading ? "Saving…" : "Delete"}
+                  </button>
+                ) : null}
+              </>
+            )}
           </>
         )}
       </div>
@@ -824,94 +2192,128 @@ export function BookingOutForm() {
       ) : null}
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
-        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          Grid Filtered By:
-        </span>
-        <fieldset className="rounded-lg border border-zinc-300 px-4 py-3 dark:border-zinc-600">
-          <legend className="sr-only">Grid filter</legend>
-          <div
-            role="radiogroup"
-            aria-label="Grid filter"
-            className="flex flex-wrap items-center gap-4"
-          >
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
-              <input
-                type="radio"
-                name="gridFilter"
-                value={GRID_FILTER_ALL}
-                checked={gridFilter === GRID_FILTER_ALL}
-                onChange={() => setGridFilter(GRID_FILTER_ALL)}
-                className="h-4 w-4 border-zinc-300 text-emerald-600 focus:ring-emerald-500"
-              />
-              All
-            </label>
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
-              <input
-                type="radio"
-                name="gridFilter"
-                value={GRID_FILTER_BY_STOCK_CODE}
-                checked={gridFilter === GRID_FILTER_BY_STOCK_CODE}
-                onChange={() => setGridFilter(GRID_FILTER_BY_STOCK_CODE)}
-                className="h-4 w-4 border-zinc-300 text-emerald-600 focus:ring-emerald-500"
-              />
-              By Stock Code
-            </label>
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
-              <input
-                type="radio"
-                name="gridFilter"
-                value={GRID_FILTER_LAST_THREE_MONTHS}
-                checked={gridFilter === GRID_FILTER_LAST_THREE_MONTHS}
-                onChange={() => setGridFilter(GRID_FILTER_LAST_THREE_MONTHS)}
-                className="h-4 w-4 border-zinc-300 text-emerald-600 focus:ring-emerald-500"
-              />
-              Last 3 Months
-            </label>
-          </div>
-        </fieldset>
+        {!isOrdersOut ? (
+          <>
+            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Grid Filtered By:
+            </span>
+            <fieldset className="rounded-lg border border-zinc-300 px-4 py-3 dark:border-zinc-600">
+              <legend className="sr-only">Grid filter</legend>
+              <div
+                role="radiogroup"
+                aria-label="Grid filter"
+                className="flex flex-wrap items-center gap-4"
+              >
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+                  <input
+                    type="radio"
+                    name="gridFilter"
+                    value={GRID_FILTER_ALL}
+                    checked={gridFilter === GRID_FILTER_ALL}
+                    onChange={() => setGridFilter(GRID_FILTER_ALL)}
+                    className="h-4 w-4 border-zinc-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  All
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+                  <input
+                    type="radio"
+                    name="gridFilter"
+                    value={GRID_FILTER_BY_STOCK_CODE}
+                    checked={gridFilter === GRID_FILTER_BY_STOCK_CODE}
+                    onChange={() => setGridFilter(GRID_FILTER_BY_STOCK_CODE)}
+                    className="h-4 w-4 border-zinc-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  By Stock Code
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+                  <input
+                    type="radio"
+                    name="gridFilter"
+                    value={GRID_FILTER_LAST_THREE_MONTHS}
+                    checked={gridFilter === GRID_FILTER_LAST_THREE_MONTHS}
+                    onChange={() => setGridFilter(GRID_FILTER_LAST_THREE_MONTHS)}
+                    className="h-4 w-4 border-zinc-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  Last 3 Months
+                </label>
+              </div>
+            </fieldset>
+          </>
+        ) : null}
       </div>
 
       <div className="mt-4 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <table className="w-full text-left text-sm">
+        <table className="w-full min-w-max text-left text-sm">
           <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
-            <tr>
-              <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                No.
-              </th>
-              <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                Stock Code
-              </th>
-              <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                Description
-              </th>
-              <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                Quantity
-              </th>
-              <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                Date
-              </th>
-            </tr>
+            {isOrdersOut ? (
+              <tr>
+                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  No.
+                </th>
+                <th className="hidden px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  customer_id
+                </th>
+                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  Customer
+                </th>
+                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  Date Placed
+                </th>
+                <th className="hidden px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  order_status_id
+                </th>
+                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  Status
+                </th>
+                <th className="hidden px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  action_user
+                </th>
+                <th className="hidden px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  comments
+                </th>
+              </tr>
+            ) : (
+              <tr>
+                {bookingOutColumns.map((column) => (
+                  <th
+                    key={column}
+                    className={`px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300 ${
+                      isBookingOutHiddenColumn(column) ? "hidden" : ""
+                    }`}
+                  >
+                    {formatBookingOutColumnHeader(column)}
+                  </th>
+                ))}
+              </tr>
+            )}
           </thead>
           <tbody>
             {gridLoading ? (
-              <tr key="booking-out-loading">
+              <tr key={isOrdersOut ? "orders-out-loading" : "booking-out-loading"}>
                 <td
-                  colSpan={5}
+                  colSpan={
+                    isOrdersOut ? 8 : Math.max(bookingOutColumns.length, 1)
+                  }
                   className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
                 >
                   Loading…
                 </td>
               </tr>
             ) : bookingOutRows.length === 0 ? (
-              <tr key="booking-out-empty">
+              <tr key={isOrdersOut ? "orders-out-empty" : "booking-out-empty"}>
                 <td
-                  colSpan={5}
+                  colSpan={
+                    isOrdersOut ? 8 : Math.max(bookingOutColumns.length, 1)
+                  }
                   className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
                 >
-                  No booking out records found.
+                  {isOrdersOut
+                    ? "No orders out records found."
+                    : "No booking out records found."}
                 </td>
               </tr>
-            ) : (
+            ) : isOrdersOut ? (
               bookingOutRows.map((row) => (
                 <tr
                   key={row.rowKey}
@@ -923,24 +2325,156 @@ export function BookingOutForm() {
                   <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
                     {row.id ?? ""}
                   </td>
-                  <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
-                    {row.stock_code}
+                  <td className="hidden px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                    {row.customer_id ?? ""}
                   </td>
                   <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
-                    {row.description}
+                    {row.customer}
                   </td>
                   <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
-                    {row.qty}
+                    {toIsoDate(row.date_placed)}
+                  </td>
+                  <td className="hidden px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                    {row.order_status_id ?? ""}
                   </td>
                   <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
-                    {toIsoDate(row.booked_out_date)}
+                    {row.status}
                   </td>
+                  <td className="hidden px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                    {row.action_user}
+                  </td>
+                  <td className="hidden px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                    {row.comments}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              bookingOutRows.map((row) => (
+                <tr
+                  key={row.rowKey}
+                  onClick={() => handleRowClick(row)}
+                  className={`cursor-pointer border-b border-zinc-100 last:border-b-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/50 ${
+                    selectedId === row.id ? "bg-sky-50 dark:bg-sky-900/20" : ""
+                  }`}
+                >
+                  {bookingOutColumns.map((column) => (
+                    <td
+                      key={`${row.rowKey}-${column}`}
+                      className={`px-4 py-2 text-zinc-800 dark:text-zinc-200 ${
+                        isBookingOutHiddenColumn(column) ? "hidden" : ""
+                      }`}
+                    >
+                      {formatBookingOutCellValue(row[column], column)}
+                    </td>
+                  ))}
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
+
+      {!isOrdersOut ? (
+        <div className="mt-6 overflow-hidden rounded-lg border border-zinc-200 bg-yellow-100 dark:border-zinc-800 dark:bg-yellow-900/30">
+          <button
+            type="button"
+            onClick={handleOrdersNotFullyDeliveredToggle}
+            aria-expanded={ordersNotFullyDeliveredExpanded}
+            className="flex w-full items-center rounded-t-lg bg-yellow-100 px-3 py-2 text-left text-sm font-medium text-zinc-800 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-zinc-200 dark:hover:bg-yellow-900/40"
+          >
+            <span
+              className={`mr-2 inline-block text-xs text-zinc-500 transition-transform dark:text-zinc-400 ${
+                ordersNotFullyDeliveredExpanded ? "rotate-90" : ""
+              }`}
+              aria-hidden
+            >
+              ▶
+            </span>
+            Orders Not Fully Delivered
+          </button>
+          {ordersNotFullyDeliveredExpanded ? (
+            <div className="border-t border-zinc-200 bg-yellow-100 p-4 dark:border-zinc-800 dark:bg-yellow-900/30">
+              <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-sky-50 dark:border-zinc-800 dark:bg-sky-900/20">
+                <table className="w-full min-w-max text-left text-sm">
+                  <thead className="border-b border-zinc-200 bg-sky-100 dark:border-zinc-800 dark:bg-sky-900/30">
+                    <tr>
+                      {ordersNotFullyDeliveredColumns.map((column) => (
+                        <th
+                          key={column}
+                          className={`px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300 ${
+                            isOrdersNotFullyDeliveredHiddenColumn(column)
+                              ? "hidden"
+                              : ""
+                          }`}
+                        >
+                          {formatOrdersNotFullyDeliveredColumnHeader(column)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ordersNotFullyDeliveredGridLoading ? (
+                      <tr>
+                        <td
+                          colSpan={Math.max(
+                            ordersNotFullyDeliveredColumns.length,
+                            1
+                          )}
+                          className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
+                        >
+                          Loading…
+                        </td>
+                      </tr>
+                    ) : ordersNotFullyDeliveredRows.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={Math.max(
+                            ordersNotFullyDeliveredColumns.length,
+                            1
+                          )}
+                          className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
+                        >
+                          No orders not fully delivered found.
+                        </td>
+                      </tr>
+                    ) : (
+                      ordersNotFullyDeliveredRows.map((row) => (
+                        <tr
+                          key={row.rowKey}
+                          onClick={() =>
+                            handleOrdersNotFullyDeliveredRowClick(row)
+                          }
+                          className={`cursor-pointer border-b border-zinc-100 bg-sky-50 last:border-b-0 hover:bg-sky-100 dark:border-zinc-800 dark:bg-sky-900/20 dark:hover:bg-sky-900/30 ${
+                            selectedOrdersNotFullyDeliveredRowKey === row.rowKey
+                              ? "bg-sky-100 dark:bg-sky-900/30"
+                              : ""
+                          }`}
+                        >
+                          {ordersNotFullyDeliveredColumns.map((column) => (
+                            <td
+                              key={`${row.rowKey}-${column}`}
+                              className={`px-4 py-2 text-zinc-800 dark:text-zinc-200 ${
+                                isOrdersNotFullyDeliveredHiddenColumn(column)
+                                  ? "hidden"
+                                  : ""
+                              }`}
+                            >
+                              {formatOrdersNotFullyDeliveredCellValue(
+                                row[column],
+                                column
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

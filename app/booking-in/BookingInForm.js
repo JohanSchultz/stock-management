@@ -271,10 +271,64 @@ function formatGridColumnHeader(key) {
   if (normalized === "totalprice" || normalized === "total_price") {
     return "Total Price";
   }
+  if (normalized === "id") return "No.";
+  if (normalized === "qty") return "Qty Booked In";
+  if (normalized === "booked_in_date") return "Date";
 
   return key
     .replace(/_/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+const BOOKING_IN_VISIBLE_COLUMNS = [
+  "id",
+  "stock_code",
+  "description",
+  "qty",
+  "qty_on_order",
+  "booked_in_type",
+  "booked_in_date",
+];
+
+function getBookingInColumnKeys(rows) {
+  const keys = new Set();
+  const keyByLower = new Map();
+
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      if (key !== "rowKey") {
+        keys.add(key);
+        keyByLower.set(key.trim().toLowerCase(), key);
+      }
+    }
+  }
+
+  const ordered = [];
+  for (const column of BOOKING_IN_VISIBLE_COLUMNS) {
+    const actualKey = keyByLower.get(column);
+    if (actualKey) {
+      ordered.push(actualKey);
+      keys.delete(actualKey);
+    }
+  }
+
+  return [...ordered, ...Array.from(keys)];
+}
+
+function isBookingInHiddenColumn(column) {
+  return !BOOKING_IN_VISIBLE_COLUMNS.includes(column.trim().toLowerCase());
+}
+
+function formatBookingInGridCellValue(value, column) {
+  if (value == null || value === "") return "";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (
+    column.toLowerCase().includes("date") &&
+    (typeof value === "string" || value instanceof Date)
+  ) {
+    return toIsoDate(value);
+  }
+  return String(value);
 }
 
 function getOrdersNotFullyBookedInColumnKeys(rows) {
@@ -377,6 +431,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     useState(false);
   const [selectedOrdersNotFullyBookedInRowKey, setSelectedOrdersNotFullyBookedInRowKey] =
     useState(null);
+  const [selectedBookedInTypeLabel, setSelectedBookedInTypeLabel] = useState("");
   const [editMode, setEditMode] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [actionUser, setActionUser] = useState("");
@@ -477,6 +532,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     );
     setComments(row.comments ?? "");
     setSelectedId(bookInId ?? null);
+    setSelectedBookedInTypeLabel("");
     setEditMode(true);
     setOrdersNotFullyBookedInSelected(true);
     setSelectedOrdersNotFullyBookedInRowKey(row.rowKey);
@@ -539,9 +595,20 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     ? ordersNotFullyBookedInHighlightReadOnlyInputClassName
     : readOnlyInputClassName;
 
+  const isMainGridOrderBookingInSelected =
+    !isOrdersIn &&
+    editMode &&
+    !ordersNotFullyBookedInSelected &&
+    selectedBookedInTypeLabel.trim() === "Order";
+
   const ordersNotFullyBookedInColumns = useMemo(
     () => getOrdersNotFullyBookedInColumnKeys(ordersNotFullyBookedInRows),
     [ordersNotFullyBookedInRows]
+  );
+
+  const bookingInColumns = useMemo(
+    () => getBookingInColumnKeys(bookingInRows),
+    [bookingInRows]
   );
 
   const loadBookingInTypes = useCallback(async () => {
@@ -894,6 +961,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     setOrderItemEditMode(false);
     clearOrdersNotFullyBookedInSelection();
     setRecordActionUser("");
+    setSelectedBookedInTypeLabel("");
     setEditMode(false);
     setDeleteConfirmOpen(false);
     setError("");
@@ -1026,11 +1094,15 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
   }
 
   function isAddFormValid() {
-    return isNonZeroInteger(stockItemId);
+    return isNonZeroInteger(stockItemId) && parseFloatValue(quantity) != null;
   }
 
   function isAmendFormValid() {
-    return isNonZeroInteger(orderItemId) && isNonZeroInteger(stockItemId);
+    return (
+      isNonZeroInteger(orderItemId) &&
+      isNonZeroInteger(stockItemId) &&
+      parseFloatValue(quantity) != null
+    );
   }
 
   function isRemoveOrderItemValid() {
@@ -1077,7 +1149,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
 
   async function handleAdd() {
     if (!isAddFormValid()) {
-      setError("Stock item is required.");
+      setError("Stock item and qty on order are required.");
       setSuccess("");
       return;
     }
@@ -1105,7 +1177,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
 
   async function handleAmend() {
     if (!isAmendFormValid()) {
-      setError("Select an order item to amend.");
+      setError("Select an order item to amend and enter qty on order.");
       setSuccess("");
       return;
     }
@@ -1319,6 +1391,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     setBookingInId(row.id != null ? String(row.id) : "");
     setRecordActionUser(row.action_user ?? "");
     setSelectedId(row.id ?? null);
+    setSelectedBookedInTypeLabel(row.booked_in_type ?? "");
     setEditMode(true);
     setError("");
     setSuccess("");
@@ -1579,6 +1652,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                   <label className="flex flex-col gap-1">
                     <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                       Qty On Order
+                      <RequiredMarker />
                     </span>
                     <input
                       type="number"
@@ -1630,7 +1704,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                     <button
                       type="button"
                       onClick={handleAdd}
-                      disabled={loading}
+                      disabled={loading || !isAddFormValid()}
                       className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Add
@@ -1641,7 +1715,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                       <button
                         type="button"
                         onClick={handleAmend}
-                        disabled={loading}
+                        disabled={loading || !isAmendFormValid()}
                         className="rounded bg-orange-200 px-4 py-2 text-sm font-medium text-orange-900 hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-100 dark:hover:bg-orange-900/60"
                       >
                         Amend
@@ -1994,24 +2068,33 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
             >
               New
             </button>
-            <button
-              type="button"
-              onClick={handleChange}
-              disabled={loading || !isChangeFormValid() || !bookingInId}
-              className="rounded bg-orange-200 px-4 py-2 text-sm font-medium text-orange-900 hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-100 dark:hover:bg-orange-900/60"
-            >
-              {loading ? "Saving…" : "Change"}
-            </button>
-            {!ordersNotFullyBookedInSelected || isOrdersIn ? (
-              <button
-                type="button"
-                onClick={handleDeleteClick}
-                disabled={loading || !bookingInId}
-                className="rounded bg-red-200 px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60"
-              >
-                {loading ? "Saving…" : "Delete"}
-              </button>
-            ) : null}
+            {isMainGridOrderBookingInSelected ? (
+              <p className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                To edit an ORDER item, open it from the yellow section at the
+                bottom.
+              </p>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={handleChange}
+                  disabled={loading || !isChangeFormValid() || !bookingInId}
+                  className="rounded bg-orange-200 px-4 py-2 text-sm font-medium text-orange-900 hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-100 dark:hover:bg-orange-900/60"
+                >
+                  {loading ? "Saving…" : "Change"}
+                </button>
+                {!ordersNotFullyBookedInSelected || isOrdersIn ? (
+                  <button
+                    type="button"
+                    onClick={handleDeleteClick}
+                    disabled={loading || !bookingInId}
+                    className="rounded bg-red-200 px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60"
+                  >
+                    {loading ? "Saving…" : "Delete"}
+                  </button>
+                ) : null}
+              </>
+            )}
           </>
         )}
       </div>
@@ -2104,7 +2187,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
       ) : null}
 
       <div className="mt-4 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <table className="w-full text-left text-sm">
+        <table className="w-full min-w-max text-left text-sm">
           <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
             {isOrdersIn ? (
               <tr>
@@ -2135,27 +2218,16 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
               </tr>
             ) : (
               <tr>
-                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                  No.
-                </th>
-                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                  Stock Code
-                </th>
-                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                  Description
-                </th>
-                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                  Qty On Hand
-                </th>
-                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                  Qty On Order
-                </th>
-                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                  Booked In Type
-                </th>
-                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                  Date
-                </th>
+                {bookingInColumns.map((column) => (
+                  <th
+                    key={column}
+                    className={`px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300 ${
+                      isBookingInHiddenColumn(column) ? "hidden" : ""
+                    }`}
+                  >
+                    {formatGridColumnHeader(column)}
+                  </th>
+                ))}
               </tr>
             )}
           </thead>
@@ -2163,7 +2235,9 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
             {gridLoading ? (
               <tr key={isOrdersIn ? "orders-in-loading" : "booking-in-loading"}>
                 <td
-                  colSpan={isOrdersIn ? 8 : 7}
+                  colSpan={
+                    isOrdersIn ? 8 : Math.max(bookingInColumns.length, 1)
+                  }
                   className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
                 >
                   Loading…
@@ -2172,7 +2246,9 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
             ) : bookingInRows.length === 0 ? (
               <tr key={isOrdersIn ? "orders-in-empty" : "booking-in-empty"}>
                 <td
-                  colSpan={isOrdersIn ? 8 : 7}
+                  colSpan={
+                    isOrdersIn ? 8 : Math.max(bookingInColumns.length, 1)
+                  }
                   className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
                 >
                   {isOrdersIn
@@ -2224,27 +2300,16 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                     selectedId === row.id ? "bg-sky-50 dark:bg-sky-900/20" : ""
                   }`}
                 >
-                  <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
-                    {row.id ?? ""}
-                  </td>
-                  <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
-                    {row.stock_code}
-                  </td>
-                  <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
-                    {row.description}
-                  </td>
-                  <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
-                    {row.qty}
-                  </td>
-                  <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
-                    {row.qty_on_order ?? ""}
-                  </td>
-                  <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
-                    {row.booked_in_type}
-                  </td>
-                  <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
-                    {toIsoDate(row.booked_in_date)}
-                  </td>
+                  {bookingInColumns.map((column) => (
+                    <td
+                      key={`${row.rowKey}-${column}`}
+                      className={`px-4 py-2 text-zinc-800 dark:text-zinc-200 ${
+                        isBookingInHiddenColumn(column) ? "hidden" : ""
+                      }`}
+                    >
+                      {formatBookingInGridCellValue(row[column], column)}
+                    </td>
+                  ))}
                 </tr>
               ))
             )}
