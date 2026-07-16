@@ -27,6 +27,9 @@ function formatColumnHeader(key) {
   if (normalized === "totalprice" || normalized === "total_price") {
     return "Total Price";
   }
+  if (normalized === "in_out" || normalized === "in out") {
+    return "In/Out";
+  }
 
   return key
     .replace(/_/g, " ")
@@ -141,9 +144,17 @@ function formatReportDate(date = new Date()) {
 
 const TABLE_HEADER_ROW = 5;
 const EXCEL_COLUMN_WIDTHS = [18, 80, 12, 15, 18, 26, 20, 15, 15];
+const STOCK_MOVEMENT_EXCEL_COLUMN_WIDTHS = [
+  7, 11, 8, 15, 40, 9, 13, 15, 15, 15, 10, 10,
+];
+const STOCK_MOVEMENT_EXCEL_COLUMN_ALIGNMENTS = {
+  2: "center",
+  3: "center",
+  4: "left",
+};
 
-function applyExcelColumnWidths(worksheet) {
-  EXCEL_COLUMN_WIDTHS.forEach((width, index) => {
+function applyExcelColumnWidths(worksheet, widths = EXCEL_COLUMN_WIDTHS) {
+  widths.forEach((width, index) => {
     worksheet.getColumn(index + 1).width = width;
   });
 }
@@ -161,7 +172,13 @@ async function writeWorkbookToFile(workbook, filename) {
   URL.revokeObjectURL(url);
 }
 
-function addFormattedTableToWorksheet(worksheet, rows, columns, startHeaderRow) {
+function addFormattedTableToWorksheet(
+  worksheet,
+  rows,
+  columns,
+  startHeaderRow,
+  { columnAlignmentsByIndex } = {}
+) {
   const headerRow = worksheet.getRow(startHeaderRow);
   columns.forEach((column, index) => {
     const cell = headerRow.getCell(index + 1);
@@ -173,7 +190,10 @@ function addFormattedTableToWorksheet(worksheet, rows, columns, startHeaderRow) 
       fgColor: { argb: "FFFFFF00" },
     };
     cell.border = TABLE_BORDER;
-    if (shouldRightAlignColumn(column)) {
+    const columnAlignment = columnAlignmentsByIndex?.[index + 1];
+    if (columnAlignment) {
+      cell.alignment = { horizontal: columnAlignment };
+    } else if (shouldRightAlignColumn(column)) {
       cell.alignment = { horizontal: "right" };
     }
   });
@@ -192,7 +212,10 @@ function addFormattedTableToWorksheet(worksheet, rows, columns, startHeaderRow) 
         cell.numFmt = "0.00";
       }
 
-      if (shouldRightAlignColumn(column)) {
+      const columnAlignment = columnAlignmentsByIndex?.[colIndex + 1];
+      if (columnAlignment) {
+        cell.alignment = { horizontal: columnAlignment };
+      } else if (shouldRightAlignColumn(column)) {
         cell.alignment = { horizontal: "right" };
       }
     });
@@ -228,9 +251,9 @@ async function exportStockMovementToExcel(rows, columns) {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet("Stock Movement");
 
-  applyExcelColumnWidths(worksheet);
+  applyExcelColumnWidths(worksheet, STOCK_MOVEMENT_EXCEL_COLUMN_WIDTHS);
 
-  worksheet.mergeCells("A1:I1");
+  worksheet.mergeCells("A1:L1");
   const titleCell = worksheet.getCell("A1");
   titleCell.value = "Stock Movement";
   titleCell.font = { name: "Aptos", size: 18 };
@@ -240,7 +263,9 @@ async function exportStockMovementToExcel(rows, columns) {
   reportDateCell.value = `Report Date: ${formatReportDate()}`;
   reportDateCell.font = { name: "Aptos", size: 11 };
 
-  addFormattedTableToWorksheet(worksheet, rows, columns, TABLE_HEADER_ROW);
+  addFormattedTableToWorksheet(worksheet, rows, columns, TABLE_HEADER_ROW, {
+    columnAlignmentsByIndex: STOCK_MOVEMENT_EXCEL_COLUMN_ALIGNMENTS,
+  });
 
   await writeWorkbookToFile(workbook, "stock-movement.xlsx");
 }
