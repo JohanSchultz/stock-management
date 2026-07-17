@@ -13,6 +13,8 @@ import {
   prepareSupabaseClient,
   useSupabaseIdleRecovery,
 } from "@/lib/supabase/useSupabaseIdleRecovery";
+import { consumeCorrectionBookingInId, storeCorrectionBookingOutId } from "@/lib/bookingCorrection";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 const inputClassName =
@@ -26,6 +28,12 @@ const ordersNotFullyDeliveredHighlightInputClassName =
 
 const ordersNotFullyDeliveredHighlightReadOnlyInputClassName =
   "rounded border border-zinc-300 bg-yellow-100 px-3 py-2 text-zinc-800 read-only:cursor-default dark:border-zinc-600 dark:bg-yellow-900/30 dark:text-zinc-200";
+
+const correctionHighlightInputClassName =
+  "rounded border border-zinc-300 bg-orange-100 px-3 py-2 text-zinc-800 dark:border-zinc-600 dark:bg-orange-900/30 dark:text-zinc-200";
+
+const correctionHighlightReadOnlyInputClassName =
+  "rounded border border-zinc-300 bg-orange-100 px-3 py-2 text-zinc-800 read-only:cursor-default dark:border-zinc-600 dark:bg-orange-900/30 dark:text-zinc-200";
 
 const SELECT_PLACEHOLDER = " -SELECT- ";
 const DELETE_CONFIRM_MESSAGE = "Please Confirn To Delete The Selected Entry";
@@ -195,15 +203,21 @@ function showsReturnReason(bookingOutTypeLabel) {
   return label === "Returned" || label === "Credit";
 }
 
-const BOOKING_OUT_VISIBLE_COLUMNS = [
-  "id",
-  "stock_code",
-  "description",
-  "qty",
-  "qty_reserved",
-  "booked_out_type",
-  "booked_out_date",
-];
+function findBookingOutTypeIdByLabel(options, label) {
+  const normalizedLabel = label.trim().toLowerCase();
+  const match = options.find(
+    (option) => optionLabel(option).trim().toLowerCase() === normalizedLabel
+  );
+  return match ? optionValue(match) : "";
+}
+
+function subtractFloatValues(minuend, subtrahend) {
+  const left = parseFloatValue(minuend) ?? 0;
+  const right = parseFloatValue(subtrahend) ?? 0;
+  return left - right;
+}
+
+const BOOKING_OUT_GRID_COLUMN_COUNT = 8;
 
 const ORDER_BOOKING_OUT_VISIBLE_COLUMNS = [
   "stock_code",
@@ -212,47 +226,22 @@ const ORDER_BOOKING_OUT_VISIBLE_COLUMNS = [
   "qty_delivered",
 ];
 
-function getBookingOutColumnKeys(rows) {
-  const keys = new Set();
-  const keyByLower = new Map();
-
-  for (const row of rows) {
-    for (const key of Object.keys(row)) {
-      if (key !== "rowKey") {
-        keys.add(key);
-        keyByLower.set(key.trim().toLowerCase(), key);
-      }
-    }
-  }
-
-  const ordered = [];
-  for (const column of BOOKING_OUT_VISIBLE_COLUMNS) {
-    const actualKey = keyByLower.get(column);
-    if (actualKey) {
-      ordered.push(actualKey);
-      keys.delete(actualKey);
-    }
-  }
-
-  return [...ordered, ...Array.from(keys)];
-}
-
-function isBookingOutHiddenColumn(column) {
-  return !BOOKING_OUT_VISIBLE_COLUMNS.includes(column.trim().toLowerCase());
-}
-
 function formatBookingOutColumnHeader(key) {
   const normalized = key.trim().toLowerCase();
   if (normalized === "id") return "No.";
   if (normalized === "qty") return "Qty Booked Out";
   if (normalized === "booked_out_date") return "Date";
+  if (normalized === "has_corrections") return "Has Corrections";
 
   return key
     .replace(/_/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function formatBookingOutCellValue(value, column) {
+function formatBookingOutCellValue(value, column, row = null) {
+  if (column.trim().toLowerCase() === "has_corrections") {
+    return formatHasCorrectionsValue(row?.contra_id);
+  }
   if (value == null || value === "") return "";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (
@@ -437,6 +426,56 @@ function normalizeOrdersOutRows(data) {
   }));
 }
 
+function formatHasCorrectionsValue(contraId) {
+  return contraId == null ? "No" : "Yes";
+}
+
+function normalizeOrderOutCorrectionsRows(data) {
+  if (!Array.isArray(data)) return [];
+
+  return data.map((row, index) => ({
+    ...row,
+    rowKey:
+      row.id != null
+        ? `order-out-correction-${row.id}`
+        : `order-out-correction-row-${index}`,
+  }));
+}
+
+function getOrderOutCorrectionsColumnKeys(rows) {
+  const keys = new Set();
+
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      if (key !== "rowKey") {
+        keys.add(key);
+      }
+    }
+  }
+
+  return Array.from(keys);
+}
+
+function formatOrderOutCorrectionsCellValue(value, column) {
+  if (value == null || value === "") return "";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (
+    column.toLowerCase().includes("date") &&
+    (typeof value === "string" || value instanceof Date)
+  ) {
+    return toIsoDate(value);
+  }
+  return String(value);
+}
+
+function formatOrderOutCorrectionsColumnHeader(key) {
+  const normalized = key.trim().toLowerCase();
+  if (normalized === "id") return "Booking In No";
+  if (normalized === "contra_id") return "Booking Out No";
+
+  return formatBookingOutColumnHeader(key);
+}
+
 function normalizeBookingOutRows(data) {
   if (!Array.isArray(data)) return [];
 
@@ -461,6 +500,8 @@ function normalizeBookingOutRows(data) {
     return_reason_id: row.return_reason_id ?? null,
     comments: row.comments ?? "",
     action_user: row.action_user ?? "",
+    contra_id: row.contra_id ?? null,
+    has_corrections: formatHasCorrectionsValue(row.contra_id),
     rowKey:
       row.id != null
         ? `booking-out-${row.id}`
@@ -470,6 +511,7 @@ function normalizeBookingOutRows(data) {
 
 export function BookingOutForm({ variant = "booking-out" } = {}) {
   useSupabaseIdleRecovery();
+  const router = useRouter();
 
   const isOrdersOut = variant === "orders-out";
   const numberFieldLabel = isOrdersOut ? "Order Out Number" : "Book Out Number";
@@ -517,6 +559,14 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     setSelectedOrdersNotFullyDeliveredRowKey,
   ] = useState(null);
   const [orderNumber, setOrderNumber] = useState("");
+  const [correctionMode, setCorrectionMode] = useState(false);
+  const [correctionBookingInId, setCorrectionBookingInId] = useState("");
+  const [correctionOriginalQty, setCorrectionOriginalQty] = useState("");
+  const [correctionOriginalQtyOnOrder, setCorrectionOriginalQtyOnOrder] =
+    useState("");
+  const [formSupplierId, setFormSupplierId] = useState("");
+  const [supplierOptions, setSupplierOptions] = useState([]);
+  const [suppliersLoading, setSuppliersLoading] = useState(false);
   const [gridFilter, setGridFilter] = useState(GRID_FILTER_ALL);
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -526,6 +576,11 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
   const [itemsExpanded, setItemsExpanded] = useState(false);
   const [orderItemEditMode, setOrderItemEditMode] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [correctionsOpen, setCorrectionsOpen] = useState(false);
+  const [correctionsBookingOutId, setCorrectionsBookingOutId] = useState(null);
+  const [correctionsRows, setCorrectionsRows] = useState([]);
+  const [correctionsLoading, setCorrectionsLoading] = useState(false);
+  const [correctionsError, setCorrectionsError] = useState("");
   const [actionUser, setActionUser] = useState("");
   const [recordActionUser, setRecordActionUser] = useState("");
   const [selectedBookedOutTypeLabel, setSelectedBookedOutTypeLabel] =
@@ -537,7 +592,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     if (isOrdersOut) {
       return computeOrderItemTotalPrice(quantity, qtyDelivered, unitPrice);
     }
-    if (ordersNotFullyDeliveredSelected) {
+    if (ordersNotFullyDeliveredSelected || correctionMode) {
       return computeOrdersNotFullyDeliveredTotalPrice(
         quantity,
         qtyReserved,
@@ -548,16 +603,12 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
   }, [
     isOrdersOut,
     ordersNotFullyDeliveredSelected,
+    correctionMode,
     quantity,
     qtyReserved,
     qtyDelivered,
     unitPrice,
   ]);
-
-  const bookingOutColumns = useMemo(
-    () => getBookingOutColumnKeys(bookingOutRows),
-    [bookingOutRows]
-  );
 
   const orderBookingOutColumns = useMemo(
     () => getOrderBookingOutColumnKeys(orderBookingOutRows),
@@ -567,6 +618,11 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
   const ordersNotFullyDeliveredColumns = useMemo(
     () => getOrdersNotFullyDeliveredColumnKeys(ordersNotFullyDeliveredRows),
     [ordersNotFullyDeliveredRows]
+  );
+
+  const orderOutCorrectionsColumns = useMemo(
+    () => getOrderOutCorrectionsColumnKeys(correctionsRows),
+    [correctionsRows]
   );
 
   const loadBookingOutTypes = useCallback(async () => {
@@ -834,6 +890,18 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
   }, [isOrdersOut, loadOrdersNotFullyDeliveredRows]);
 
   useEffect(() => {
+    if (isOrdersOut) return;
+
+    const storedId = consumeCorrectionBookingInId();
+    if (!storedId) return;
+
+    const bookInId = parseInteger(storedId);
+    if (bookInId == null) return;
+
+    loadCorrectionData(bookInId);
+  }, [isOrdersOut]);
+
+  useEffect(() => {
     if (!isOrdersOut) return;
     loadOrdersOutRows();
   }, [isOrdersOut, formCustomerId, loadOrdersOutRows]);
@@ -883,6 +951,12 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
   }
 
   function handleOrdersNotFullyDeliveredRowClick(row) {
+    setCorrectionMode(false);
+    setCorrectionBookingInId("");
+    setCorrectionOriginalQty("");
+    setCorrectionOriginalQtyOnOrder("");
+    setFormSupplierId("");
+
     const bookOutId = row.book_out_id ?? row.id;
     const matchingBookingOutRow = bookingOutRows.find(
       (gridRow) =>
@@ -926,6 +1000,79 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     setSelectedOrdersNotFullyDeliveredRowKey(row.rowKey);
     setError("");
     setSuccess("");
+  }
+
+  async function loadCorrectionData(bookInId) {
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const supabase = await prepareSupabaseClient();
+      if (!supabase) return;
+
+      const { data: supplierData, error: supplierError } = await supabase.rpc(
+        "pr_suppliers_active"
+      );
+      if (supplierError) throw supplierError;
+      setSupplierOptions(toOptions(supplierData));
+
+      const { data: typeData, error: typeError } = await supabase.rpc(
+        "pr_booking_out_types_active"
+      );
+      if (typeError) throw typeError;
+      const bookingOutTypes = toOptions(typeData);
+      setBookingOutTypeOptions(bookingOutTypes);
+
+      const { data, error: rpcError } = await supabase.rpc("pr_correction_data", {
+        p_booking_in_id: bookInId,
+      });
+      if (rpcError) throw rpcError;
+
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row) {
+        throw new Error("No correction data found.");
+      }
+
+      clearOrdersNotFullyDeliveredSelection();
+      setCorrectionMode(true);
+      setCorrectionBookingInId(
+        row.booking_in_id != null ? String(row.booking_in_id) : String(bookInId)
+      );
+      setOrderNumber(row.order_id != null ? String(row.order_id) : "");
+      setStockItemId(
+        row.stock_item_id != null ? String(row.stock_item_id) : ""
+      );
+      setStockCode(row.stock_code ?? "");
+      setDescription(row.stock_item ?? row.descr ?? row.description ?? "");
+      setQuantity(formatGridQtyToBookOut(row.qty));
+      setQtyReserved(row.qty_on_order != null ? String(row.qty_on_order) : "");
+      setCorrectionOriginalQty(row.qty != null ? String(row.qty) : "0");
+      setCorrectionOriginalQtyOnOrder(
+        row.qty_on_order != null ? String(row.qty_on_order) : ""
+      );
+      setBookingDate(todayIsoDate());
+      setUnitPrice(formatUnitPrice(row.unit_price));
+      setFormSupplierId(
+        row.supplier_id != null ? String(row.supplier_id) : ""
+      );
+      setBookingOutId("");
+      setFormCustomerId("");
+      setComments("");
+      setBookingOutTypeId(findBookingOutTypeIdByLabel(bookingOutTypes, "Correction"));
+      setReturnReasonId("");
+      setSelectedId(null);
+      setSelectedBookedOutTypeLabel("");
+      setEditMode(false);
+    } catch (err) {
+      setCorrectionMode(false);
+      setCorrectionBookingInId("");
+      setCorrectionOriginalQty("");
+      setCorrectionOriginalQtyOnOrder("");
+      setError(err.message ?? "Failed to load correction data");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function handleBookingOutQuantityChange(nextQuantity) {
@@ -975,13 +1122,20 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
   }, [ordersNotFullyDeliveredSelected, quantity, qtyReserved]);
 
   const bookingOutHighlightActive =
-    !isOrdersOut && ordersNotFullyDeliveredSelected;
-  const bookingOutInputClassName = bookingOutHighlightActive
-    ? ordersNotFullyDeliveredHighlightInputClassName
-    : inputClassName;
-  const bookingOutReadOnlyInputClassName = bookingOutHighlightActive
-    ? ordersNotFullyDeliveredHighlightReadOnlyInputClassName
-    : readOnlyInputClassName;
+    !isOrdersOut && ordersNotFullyDeliveredSelected && !correctionMode;
+  const correctionHighlightActive = !isOrdersOut && correctionMode;
+  const showOrderNumberAndQtyReserved =
+    ordersNotFullyDeliveredSelected || correctionMode;
+  const bookingOutInputClassName = correctionHighlightActive
+    ? correctionHighlightInputClassName
+    : bookingOutHighlightActive
+      ? ordersNotFullyDeliveredHighlightInputClassName
+      : inputClassName;
+  const bookingOutReadOnlyInputClassName = correctionHighlightActive
+    ? correctionHighlightReadOnlyInputClassName
+    : bookingOutHighlightActive
+      ? ordersNotFullyDeliveredHighlightReadOnlyInputClassName
+      : readOnlyInputClassName;
 
   const isMainGridOrderBookingOutSelected =
     !isOrdersOut &&
@@ -991,6 +1145,8 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     (parseFloatValue(qtyReserved) ?? 0) > 0;
 
   function handleBookingOutTypeChange(nextBookingOutTypeId) {
+    if (correctionMode) return;
+
     setBookingOutTypeId(nextBookingOutTypeId);
 
     const nextBookingOutType = bookingOutTypeOptions.find(
@@ -1046,27 +1202,55 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     setItemsExpanded(false);
     setOrderItemEditMode(false);
     clearOrdersNotFullyDeliveredSelection();
+    setCorrectionMode(false);
+    setCorrectionBookingInId("");
+    setCorrectionOriginalQty("");
+    setCorrectionOriginalQtyOnOrder("");
+    setFormSupplierId("");
     setEditMode(false);
     setDeleteConfirmOpen(false);
     setError("");
     setSuccess("");
   }
 
+  async function refreshMainBookingOutGrid(override = {}) {
+    const filterToReload = override.filter ?? gridFilter;
+    const codeToReload =
+      override.stockCode !== undefined ? override.stockCode : stockCode.trim();
+
+    await loadBookingOutRows({
+      filter: filterToReload,
+      stockCode:
+        filterToReload === GRID_FILTER_BY_STOCK_CODE ? codeToReload : "",
+    });
+  }
+
   async function refreshAfterAction(successMessage) {
     const codeToReload = stockCode.trim();
     const customerToReload = formCustomerId;
-    setSuccess(successMessage);
+    const filterToReload = gridFilter;
     initializeForm();
+    setSuccess(successMessage);
     if (isOrdersOut) {
       await loadOrdersOutRows(customerToReload);
     } else {
-      await loadBookingOutRows({
-        filter: gridFilter,
-        stockCode:
-          gridFilter === GRID_FILTER_BY_STOCK_CODE ? codeToReload : "",
+      await refreshMainBookingOutGrid({
+        filter: filterToReload,
+        stockCode: codeToReload,
       });
       await loadOrdersNotFullyDeliveredRows();
     }
+  }
+
+  async function refreshAfterCorrectionAction(successMessage) {
+    const codeToReload = stockCode.trim();
+    const filterToReload = gridFilter;
+    initializeForm();
+    setSuccess(successMessage);
+    await refreshMainBookingOutGrid({
+      filter: filterToReload,
+      stockCode: codeToReload,
+    });
   }
 
   function buildOrderBookingOutPayload() {
@@ -1154,6 +1338,26 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     };
   }
 
+  function buildBookingOutCorrectionPayload() {
+    return {
+      p_stock_item_id: parseInteger(stockItemId),
+      p_qty: subtractFloatValues(correctionOriginalQty, quantity),
+      p_booked_out_date: bookingDate,
+      p_booking_out_type_id: parseInteger(bookingOutTypeId),
+      p_return_reason_id: 0,
+      p_comments: comments.trim(),
+      p_action_user: recordActionUser.trim(),
+      p_customer_id: parseInteger(formSupplierId),
+      p_orders_out_id: parseInteger(orderNumber),
+      p_unit_price: parseFloatValue(unitPrice),
+      p_qty_reserved: subtractFloatValues(
+        correctionOriginalQtyOnOrder,
+        qtyReserved
+      ),
+      p_contra_id: parseInteger(correctionBookingInId),
+    };
+  }
+
   function isMandatoryFieldsValid() {
     if (isOrdersOut) {
       return isNonZeroInteger(formCustomerId);
@@ -1162,6 +1366,11 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     if (!stockCode.trim()) return false;
     if (!isNonZeroInteger(stockItemId)) return false;
     if (parseFloatValue(quantity) == null) return false;
+    if (correctionMode) {
+      if (!parseInteger(bookingOutTypeId)) return false;
+      if (!comments.trim()) return false;
+      return true;
+    }
     if (ordersNotFullyDeliveredSelected) return true;
     if (!parseInteger(bookingOutTypeId)) return false;
     return true;
@@ -1339,6 +1548,34 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     }
   }
 
+  async function handleApplyCorrectionSubmit() {
+    if (!comments.trim()) {
+      setError("Comments are required to apply a correction.");
+      setSuccess("");
+      return;
+    }
+
+    if (!isSaveFormValid()) return;
+
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const supabase = createClient();
+      const { error: rpcError } = await supabase.rpc(
+        "pi_booking_out_correction",
+        buildBookingOutCorrectionPayload()
+      );
+      if (rpcError) throw rpcError;
+      await refreshAfterCorrectionAction("Booking out correction applied.");
+    } catch (err) {
+      setError(err.message ?? "Failed to apply booking out correction");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSave() {
     if (!isSaveFormValid()) return;
 
@@ -1425,6 +1662,43 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     }
   }
 
+  async function handleCorrectionsButtonClick(event, bookingOutId) {
+    event.stopPropagation();
+
+    const id = parseInteger(bookingOutId);
+    if (id == null) return;
+
+    setCorrectionsOpen(true);
+    setCorrectionsBookingOutId(id);
+    setCorrectionsLoading(true);
+    setCorrectionsError("");
+    setCorrectionsRows([]);
+
+    try {
+      const supabase = await prepareSupabaseClient();
+      if (!supabase) return;
+
+      const { data, error: rpcError } = await supabase.rpc(
+        "pr_order_out_corrections",
+        { p_booking_out_id: id }
+      );
+      if (rpcError) throw rpcError;
+      setCorrectionsRows(normalizeOrderOutCorrectionsRows(data));
+    } catch (err) {
+      setCorrectionsRows([]);
+      setCorrectionsError(err.message ?? "Failed to load order out corrections");
+    } finally {
+      setCorrectionsLoading(false);
+    }
+  }
+
+  function handleCloseCorrections() {
+    setCorrectionsOpen(false);
+    setCorrectionsBookingOutId(null);
+    setCorrectionsRows([]);
+    setCorrectionsError("");
+  }
+
   async function handleRowClick(row) {
     if (isOrdersOut) {
       setOrderStatusId(
@@ -1458,6 +1732,11 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     );
 
     clearOrdersNotFullyDeliveredSelection();
+    setCorrectionMode(false);
+    setCorrectionBookingInId("");
+    setCorrectionOriginalQty("");
+    setCorrectionOriginalQtyOnOrder("");
+    setFormSupplierId("");
     setQuantity(formatGridQtyToBookOut(row.qty));
     setQtyReserved(
       row.qty_reserved != null ? String(row.qty_reserved) : ""
@@ -1504,6 +1783,14 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     setOrdersNotFullyDeliveredExpanded((expanded) => !expanded);
   }
 
+  function handleApplyCorrection() {
+    const bookOutId = parseInteger(bookingOutId);
+    if (bookOutId == null) return;
+
+    storeCorrectionBookingOutId(bookOutId);
+    router.push("/booking-in");
+  }
+
   function handleItemsSectionToggle() {
     setItemsExpanded((current) => !current);
   }
@@ -1511,22 +1798,55 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
   return (
     <div className="mt-4 w-full">
       {!isOrdersOut ? (
-        <input
-          type="text"
-          name="stock_item_id"
-          value={stockItemId}
-          readOnly
-          tabIndex={-1}
-          aria-hidden="true"
-          className="hidden"
-        />
+        <>
+          <input
+            type="text"
+            name="stock_item_id"
+            value={stockItemId}
+            readOnly
+            tabIndex={-1}
+            aria-hidden="true"
+            className="hidden"
+          />
+          {correctionMode ? (
+            <>
+              <input
+                type="text"
+                name="booking_in_id"
+                value={correctionBookingInId}
+                readOnly
+                tabIndex={-1}
+                aria-hidden="true"
+                className="hidden"
+              />
+              <input
+                type="text"
+                name="qty"
+                value={correctionOriginalQty}
+                readOnly
+                tabIndex={-1}
+                aria-hidden="true"
+                className="hidden"
+              />
+              <input
+                type="text"
+                name="qty_on_order"
+                value={correctionOriginalQtyOnOrder}
+                readOnly
+                tabIndex={-1}
+                aria-hidden="true"
+                className="hidden"
+              />
+            </>
+          ) : null}
+        </>
       ) : null}
 
       <form className="flex flex-col gap-4">
         {!isOrdersOut ? (
           <div
             className={`grid grid-cols-1 gap-4 sm:max-w-2xl ${
-              ordersNotFullyDeliveredSelected ? "sm:grid-cols-2" : ""
+              showOrderNumberAndQtyReserved ? "sm:grid-cols-2" : ""
             }`}
           >
             <label className="flex flex-col gap-1">
@@ -1542,14 +1862,14 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                 className={`${bookingOutReadOnlyInputClassName} w-full`}
               />
             </label>
-            {ordersNotFullyDeliveredSelected ? (
+            {showOrderNumberAndQtyReserved ? (
               <label className="flex flex-col gap-1">
                 <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                  Order Number
+                  {correctionMode ? "Order In Number" : "Order Number"}
                 </span>
                 <input
                   type="text"
-                  name="order_out_id"
+                  name={correctionMode ? "order_in_id" : "order_out_id"}
                   value={orderNumber}
                   readOnly
                   tabIndex={-1}
@@ -1593,7 +1913,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
         {!isOrdersOut ? (
           <div
             className={`grid grid-cols-1 gap-4 ${
-              ordersNotFullyDeliveredSelected ? "sm:grid-cols-4" : "sm:grid-cols-3"
+              showOrderNumberAndQtyReserved ? "sm:grid-cols-4" : "sm:grid-cols-3"
             }`}
           >
             <label className="flex flex-col gap-1">
@@ -1612,7 +1932,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
               />
             </label>
 
-            {ordersNotFullyDeliveredSelected ? (
+            {showOrderNumberAndQtyReserved ? (
               <label className="flex flex-col gap-1">
                 <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                   Qty Reserved
@@ -1622,9 +1942,14 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                   step="any"
                   inputMode="decimal"
                   value={qtyReserved}
-                  readOnly
-                  tabIndex={-1}
-                  className={`${bookingOutReadOnlyInputClassName} w-full`}
+                  readOnly={ordersNotFullyDeliveredSelected}
+                  tabIndex={ordersNotFullyDeliveredSelected ? -1 : undefined}
+                  onChange={(e) => setQtyReserved(e.target.value)}
+                  className={`${
+                    ordersNotFullyDeliveredSelected
+                      ? bookingOutReadOnlyInputClassName
+                      : bookingOutInputClassName
+                  } w-full`}
                 />
               </label>
             ) : null}
@@ -1634,19 +1959,37 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                 Unit Price
               </span>
               <input
-                type={ordersNotFullyDeliveredSelected ? "number" : "text"}
-                step={ordersNotFullyDeliveredSelected ? "any" : undefined}
-                inputMode={ordersNotFullyDeliveredSelected ? "decimal" : undefined}
+                type={
+                  ordersNotFullyDeliveredSelected || correctionMode
+                    ? "number"
+                    : "text"
+                }
+                step={
+                  ordersNotFullyDeliveredSelected || correctionMode
+                    ? "any"
+                    : undefined
+                }
+                inputMode={
+                  ordersNotFullyDeliveredSelected || correctionMode
+                    ? "decimal"
+                    : undefined
+                }
                 value={unitPrice}
-                readOnly={!ordersNotFullyDeliveredSelected}
-                tabIndex={ordersNotFullyDeliveredSelected ? undefined : -1}
+                readOnly={
+                  !ordersNotFullyDeliveredSelected && !correctionMode
+                }
+                tabIndex={
+                  ordersNotFullyDeliveredSelected || correctionMode
+                    ? undefined
+                    : -1
+                }
                 onChange={
-                  ordersNotFullyDeliveredSelected
+                  ordersNotFullyDeliveredSelected || correctionMode
                     ? (e) => setUnitPrice(e.target.value)
                     : undefined
                 }
                 className={`${
-                  ordersNotFullyDeliveredSelected
+                  ordersNotFullyDeliveredSelected || correctionMode
                     ? bookingOutInputClassName
                     : bookingOutReadOnlyInputClassName
                 } w-full`}
@@ -1697,7 +2040,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                   </select>
                 </label>
               ) : (
-                !ordersNotFullyDeliveredSelected ? (
+                !ordersNotFullyDeliveredSelected || correctionMode ? (
                   <label className="flex w-full flex-col gap-1">
                     <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                       Book-out type
@@ -1708,8 +2051,12 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                       onChange={(e) =>
                         handleBookingOutTypeChange(e.target.value)
                       }
-                      disabled={bookingOutTypesLoading}
-                      className={`${inputClassName} w-full`}
+                      disabled={bookingOutTypesLoading || correctionMode}
+                      className={`${
+                        correctionMode
+                          ? bookingOutReadOnlyInputClassName
+                          : bookingOutInputClassName
+                      } w-full`}
                     >
                       <option value="">
                         {bookingOutTypesLoading ? "Loading…" : SELECT_PLACEHOLDER}
@@ -1738,6 +2085,30 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                     onChange={(e) => setBookingDate(e.target.value)}
                     className={inputClassName}
                   />
+                </label>
+              ) : correctionMode ? (
+                <label className="flex w-full flex-col gap-1">
+                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    Supplier
+                  </span>
+                  <select
+                    value={formSupplierId}
+                    onChange={(e) => setFormSupplierId(e.target.value)}
+                    disabled={suppliersLoading}
+                    className={`${bookingOutInputClassName} w-full`}
+                  >
+                    <option value="">
+                      {suppliersLoading ? "Loading…" : SELECT_PLACEHOLDER}
+                    </option>
+                    {supplierOptions.map((option, index) => (
+                      <option
+                        key={option.id ?? `supplier-${index}`}
+                        value={optionValue(option)}
+                      >
+                        {optionLabel(option)}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               ) : (
                 <label className="flex w-full flex-col gap-1">
@@ -1775,7 +2146,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                   value={returnReasonId}
                   onChange={(e) => setReturnReasonId(e.target.value)}
                   disabled={returnReasonsLoading}
-                  className={inputClassName}
+                  className={bookingOutInputClassName}
                 >
                   <option value="">
                     {returnReasonsLoading ? "Loading…" : SELECT_PLACEHOLDER}
@@ -2075,13 +2446,14 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Comments
+            {correctionMode ? <RequiredMarker /> : null}
           </span>
           <textarea
             value={comments}
             onChange={(e) => setComments(e.target.value)}
             rows={3}
             className={
-              bookingOutHighlightActive ? bookingOutInputClassName : inputClassName
+              !isOrdersOut ? bookingOutInputClassName : inputClassName
             }
           />
         </label>
@@ -2105,7 +2477,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
       )}
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
-        {!editMode && (
+        {!editMode && !correctionMode && (
           <button
             type="button"
             onClick={isOrdersOut ? handleAdd : handleSave}
@@ -2115,6 +2487,17 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
             {loading ? "Saving…" : "Save"}
           </button>
         )}
+
+        {!editMode && correctionMode ? (
+          <button
+            type="button"
+            onClick={handleApplyCorrectionSubmit}
+            disabled={loading || !isSaveFormValid()}
+            className="rounded bg-yellow-200 px-4 py-2 text-sm font-medium text-yellow-900 hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-yellow-900/40 dark:text-yellow-100 dark:hover:bg-yellow-900/60"
+          >
+            {loading ? "Saving…" : "Apply Correction"}
+          </button>
+        ) : null}
 
         {editMode && (
           <>
@@ -2126,10 +2509,23 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
               New
             </button>
             {isMainGridOrderBookingOutSelected ? (
-              <p className="text-sm font-medium text-blue-600 dark:text-blue-400">
-                To edit an ORDER item, open it from the yellow section at the
-                bottom.
-              </p>
+              <button
+                type="button"
+                onClick={handleApplyCorrection}
+                disabled={loading}
+                className="rounded bg-yellow-200 px-4 py-2 text-sm font-medium text-yellow-900 hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-yellow-900/40 dark:text-yellow-100 dark:hover:bg-yellow-900/60"
+              >
+                Make a Correction
+              </button>
+            ) : correctionMode ? (
+              <button
+                type="button"
+                onClick={handleApplyCorrectionSubmit}
+                disabled={loading || !isSaveFormValid()}
+                className="rounded bg-yellow-200 px-4 py-2 text-sm font-medium text-yellow-900 hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-yellow-900/40 dark:text-yellow-100 dark:hover:bg-yellow-900/60"
+              >
+                {loading ? "Saving…" : "Apply Correction"}
+              </button>
             ) : (
               <>
                 <button
@@ -2191,6 +2587,104 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
         </div>
       ) : null}
 
+      {correctionsOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="order-out-corrections-title"
+            className="flex max-h-[90vh] w-full max-w-[76.8rem] flex-col rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
+          >
+            <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+              <h3
+                id="order-out-corrections-title"
+                className="text-base font-semibold text-zinc-900 dark:text-zinc-50"
+              >
+                Order Out Corrections
+                {correctionsBookingOutId != null
+                  ? ` — No. ${correctionsBookingOutId}`
+                  : ""}
+              </h3>
+              <button
+                type="button"
+                onClick={handleCloseCorrections}
+                className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="overflow-auto p-4">
+              {correctionsError ? (
+                <p
+                  className="mb-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                  role="alert"
+                >
+                  {correctionsError}
+                </p>
+              ) : null}
+
+              <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+                <table className="w-full min-w-max text-left text-sm">
+                  <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
+                    <tr>
+                      {orderOutCorrectionsColumns.map((column) => (
+                        <th
+                          key={column}
+                          className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300"
+                        >
+                          {formatOrderOutCorrectionsColumnHeader(column)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {correctionsLoading ? (
+                      <tr>
+                        <td
+                          colSpan={Math.max(orderOutCorrectionsColumns.length, 1)}
+                          className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
+                        >
+                          Loading…
+                        </td>
+                      </tr>
+                    ) : correctionsRows.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={Math.max(orderOutCorrectionsColumns.length, 1)}
+                          className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
+                        >
+                          No correction records found.
+                        </td>
+                      </tr>
+                    ) : (
+                      correctionsRows.map((row) => (
+                        <tr
+                          key={row.rowKey}
+                          className="border-b border-zinc-100 last:border-b-0 dark:border-zinc-800"
+                        >
+                          {orderOutCorrectionsColumns.map((column) => (
+                            <td
+                              key={`${row.rowKey}-${column}`}
+                              className="whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200"
+                            >
+                              {formatOrderOutCorrectionsCellValue(
+                                row[column],
+                                column
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="mt-6 flex flex-wrap items-center gap-3">
         {!isOrdersOut ? (
           <>
@@ -2243,7 +2737,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
         ) : null}
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="mt-4 overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
         <table className="w-full min-w-max text-left text-sm">
           <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
             {isOrdersOut ? (
@@ -2275,16 +2769,30 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
               </tr>
             ) : (
               <tr>
-                {bookingOutColumns.map((column) => (
-                  <th
-                    key={column}
-                    className={`px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300 ${
-                      isBookingOutHiddenColumn(column) ? "hidden" : ""
-                    }`}
-                  >
-                    {formatBookingOutColumnHeader(column)}
-                  </th>
-                ))}
+                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  No.
+                </th>
+                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  Stock Code
+                </th>
+                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  Description
+                </th>
+                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  Qty Booked Out
+                </th>
+                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  Qty Reserved
+                </th>
+                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  Booked Out Type
+                </th>
+                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  Date
+                </th>
+                <th className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  Has Corrections
+                </th>
               </tr>
             )}
           </thead>
@@ -2293,7 +2801,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
               <tr key={isOrdersOut ? "orders-out-loading" : "booking-out-loading"}>
                 <td
                   colSpan={
-                    isOrdersOut ? 8 : Math.max(bookingOutColumns.length, 1)
+                    isOrdersOut ? 8 : BOOKING_OUT_GRID_COLUMN_COUNT
                   }
                   className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
                 >
@@ -2304,7 +2812,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
               <tr key={isOrdersOut ? "orders-out-empty" : "booking-out-empty"}>
                 <td
                   colSpan={
-                    isOrdersOut ? 8 : Math.max(bookingOutColumns.length, 1)
+                    isOrdersOut ? 8 : BOOKING_OUT_GRID_COLUMN_COUNT
                   }
                   className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
                 >
@@ -2357,16 +2865,42 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                     selectedId === row.id ? "bg-sky-50 dark:bg-sky-900/20" : ""
                   }`}
                 >
-                  {bookingOutColumns.map((column) => (
-                    <td
-                      key={`${row.rowKey}-${column}`}
-                      className={`px-4 py-2 text-zinc-800 dark:text-zinc-200 ${
-                        isBookingOutHiddenColumn(column) ? "hidden" : ""
-                      }`}
-                    >
-                      {formatBookingOutCellValue(row[column], column)}
-                    </td>
-                  ))}
+                  <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                    {row.id ?? ""}
+                  </td>
+                  <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                    {row.stock_code ?? ""}
+                  </td>
+                  <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                    {row.description ?? row.stock_item ?? ""}
+                  </td>
+                  <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                    {formatBookingOutCellValue(row.qty, "qty")}
+                  </td>
+                  <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                    {formatBookingOutCellValue(row.qty_reserved, "qty_reserved")}
+                  </td>
+                  <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                    {row.booked_out_type ?? ""}
+                  </td>
+                  <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
+                    {formatBookingOutCellValue(row.booked_out_date, "booked_out_date")}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                    {row.contra_id == null ? (
+                      "No"
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(event) =>
+                          handleCorrectionsButtonClick(event, row.id)
+                        }
+                        className="rounded bg-sky-200 px-2 py-0.5 text-xs font-medium text-sky-900 hover:bg-sky-300 dark:bg-sky-900/40 dark:text-sky-100 dark:hover:bg-sky-900/60"
+                      >
+                        Yes
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))
             )}
