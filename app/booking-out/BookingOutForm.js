@@ -13,8 +13,6 @@ import {
   prepareSupabaseClient,
   useSupabaseIdleRecovery,
 } from "@/lib/supabase/useSupabaseIdleRecovery";
-import { consumeCorrectionBookingInId, storeCorrectionBookingOutId } from "@/lib/bookingCorrection";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 const inputClassName =
@@ -28,12 +26,6 @@ const ordersNotFullyDeliveredHighlightInputClassName =
 
 const ordersNotFullyDeliveredHighlightReadOnlyInputClassName =
   "rounded border border-zinc-300 bg-yellow-100 px-3 py-2 text-zinc-800 read-only:cursor-default dark:border-zinc-600 dark:bg-yellow-900/30 dark:text-zinc-200";
-
-const correctionHighlightInputClassName =
-  "rounded border border-zinc-300 bg-orange-100 px-3 py-2 text-zinc-800 dark:border-zinc-600 dark:bg-orange-900/30 dark:text-zinc-200";
-
-const correctionHighlightReadOnlyInputClassName =
-  "rounded border border-zinc-300 bg-orange-100 px-3 py-2 text-zinc-800 read-only:cursor-default dark:border-zinc-600 dark:bg-orange-900/30 dark:text-zinc-200";
 
 const SELECT_PLACEHOLDER = " -SELECT- ";
 const DELETE_CONFIRM_MESSAGE = "Please Confirn To Delete The Selected Entry";
@@ -161,6 +153,12 @@ function formatGridQtyToBookOut(value) {
   return String(value);
 }
 
+function sumGridRowBookedOutAndReserved(row) {
+  const bookedOut = parseFloatValue(row.qty) ?? 0;
+  const reserved = parseFloatValue(row.qty_reserved) ?? 0;
+  return bookedOut + reserved;
+}
+
 function isSameStockItemId(left, right) {
   if (left == null || right == null) return false;
   return String(left) === String(right);
@@ -201,20 +199,6 @@ function RequiredMarker() {
 function showsReturnReason(bookingOutTypeLabel) {
   const label = bookingOutTypeLabel.trim();
   return label === "Returned" || label === "Credit";
-}
-
-function findBookingOutTypeIdByLabel(options, label) {
-  const normalizedLabel = label.trim().toLowerCase();
-  const match = options.find(
-    (option) => optionLabel(option).trim().toLowerCase() === normalizedLabel
-  );
-  return match ? optionValue(match) : "";
-}
-
-function subtractFloatValues(minuend, subtrahend) {
-  const left = parseFloatValue(minuend) ?? 0;
-  const right = parseFloatValue(subtrahend) ?? 0;
-  return left - right;
 }
 
 const BOOKING_OUT_GRID_COLUMN_COUNT = 8;
@@ -447,7 +431,7 @@ function getOrderOutCorrectionsColumnKeys(rows) {
 
   for (const row of rows) {
     for (const key of Object.keys(row)) {
-      if (key !== "rowKey") {
+      if (key !== "rowKey" && key !== "contra_id") {
         keys.add(key);
       }
     }
@@ -488,6 +472,8 @@ function normalizeBookingOutRows(data) {
     stock_item: row.stock_item ?? row.descr ?? "",
     qty: row.qty ?? row.quantity ?? null,
     qty_reserved: row.qty_reserved ?? null,
+    orders_out_id: row.orders_out_id ?? row.order_out_id ?? null,
+    customer_id: row.customer_id ?? null,
     booked_out_type:
       row.booked_out_type ??
       row.booking_out_type ??
@@ -495,6 +481,7 @@ function normalizeBookingOutRows(data) {
       "",
     unit_price: row.unit_price ?? row.unitPrice ?? null,
     booked_out_date: row.booked_out_date ?? row.booking_date ?? null,
+    expiry_date: row.expiry_date ?? null,
     supplier_id: row.supplier_id ?? null,
     booking_out_type_id: row.booking_out_type_id ?? null,
     return_reason_id: row.return_reason_id ?? null,
@@ -511,9 +498,9 @@ function normalizeBookingOutRows(data) {
 
 export function BookingOutForm({ variant = "booking-out" } = {}) {
   useSupabaseIdleRecovery();
-  const router = useRouter();
 
   const isOrdersOut = variant === "orders-out";
+  const hideExpandableSections = variant === "booking-out";
   const numberFieldLabel = isOrdersOut ? "Order Out Number" : "Book Out Number";
 
   const [stockCode, setStockCode] = useState("");
@@ -521,10 +508,12 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
   const [stockItemId, setStockItemId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [qtyReserved, setQtyReserved] = useState("");
+  const [totalQty, setTotalQty] = useState("");
   const [qtyDelivered, setQtyDelivered] = useState("");
   const [orderItemId, setOrderItemId] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
   const [bookingDate, setBookingDate] = useState(todayIsoDate);
+  const [expiryDate, setExpiryDate] = useState("");
   const [bookingOutTypeId, setBookingOutTypeId] = useState("");
   const [bookingOutTypeOptions, setBookingOutTypeOptions] = useState([]);
   const [bookingOutTypesLoading, setBookingOutTypesLoading] = useState(false);
@@ -558,15 +547,8 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     selectedOrdersNotFullyDeliveredRowKey,
     setSelectedOrdersNotFullyDeliveredRowKey,
   ] = useState(null);
+  const [selectedGridBookedOutType, setSelectedGridBookedOutType] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
-  const [correctionMode, setCorrectionMode] = useState(false);
-  const [correctionBookingInId, setCorrectionBookingInId] = useState("");
-  const [correctionOriginalQty, setCorrectionOriginalQty] = useState("");
-  const [correctionOriginalQtyOnOrder, setCorrectionOriginalQtyOnOrder] =
-    useState("");
-  const [formSupplierId, setFormSupplierId] = useState("");
-  const [supplierOptions, setSupplierOptions] = useState([]);
-  const [suppliersLoading, setSuppliersLoading] = useState(false);
   const [gridFilter, setGridFilter] = useState(GRID_FILTER_ALL);
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -583,8 +565,6 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
   const [correctionsError, setCorrectionsError] = useState("");
   const [actionUser, setActionUser] = useState("");
   const [recordActionUser, setRecordActionUser] = useState("");
-  const [selectedBookedOutTypeLabel, setSelectedBookedOutTypeLabel] =
-    useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -592,18 +572,21 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     if (isOrdersOut) {
       return computeOrderItemTotalPrice(quantity, qtyDelivered, unitPrice);
     }
-    if (ordersNotFullyDeliveredSelected || correctionMode) {
+    if (ordersNotFullyDeliveredSelected) {
       return computeOrdersNotFullyDeliveredTotalPrice(
         quantity,
         qtyReserved,
         unitPrice
       );
     }
+    if (!editMode) {
+      return computeTotalPrice(qtyReserved, unitPrice);
+    }
     return computeTotalPrice(quantity, unitPrice);
   }, [
     isOrdersOut,
     ordersNotFullyDeliveredSelected,
-    correctionMode,
+    editMode,
     quantity,
     qtyReserved,
     qtyDelivered,
@@ -890,18 +873,6 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
   }, [isOrdersOut, loadOrdersNotFullyDeliveredRows]);
 
   useEffect(() => {
-    if (isOrdersOut) return;
-
-    const storedId = consumeCorrectionBookingInId();
-    if (!storedId) return;
-
-    const bookInId = parseInteger(storedId);
-    if (bookInId == null) return;
-
-    loadCorrectionData(bookInId);
-  }, [isOrdersOut]);
-
-  useEffect(() => {
     if (!isOrdersOut) return;
     loadOrdersOutRows();
   }, [isOrdersOut, formCustomerId, loadOrdersOutRows]);
@@ -948,15 +919,11 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     setSelectedOrdersNotFullyDeliveredRowKey(null);
     setOrderNumber("");
     setQtyReserved("");
+    setTotalQty("");
   }
 
   function handleOrdersNotFullyDeliveredRowClick(row) {
-    setCorrectionMode(false);
-    setCorrectionBookingInId("");
-    setCorrectionOriginalQty("");
-    setCorrectionOriginalQtyOnOrder("");
-    setFormSupplierId("");
-
+    setTotalQty("");
     const bookOutId = row.book_out_id ?? row.id;
     const matchingBookingOutRow = bookingOutRows.find(
       (gridRow) =>
@@ -974,6 +941,13 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
       row.customer_id != null ? String(row.customer_id) : ""
     );
     setBookingDate(toIsoDate(row.date_placed));
+    setExpiryDate(
+      row.expiry_date
+        ? toIsoDate(row.expiry_date)
+        : matchingBookingOutRow?.expiry_date
+          ? toIsoDate(matchingBookingOutRow.expiry_date)
+          : ""
+    );
     setRecordActionUser(row.action_user ?? "");
     setQuantity(formatGridQtyToBookOut(row.qty_on_hand));
     setQtyReserved(row.qty_reserved != null ? String(row.qty_reserved) : "");
@@ -994,7 +968,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     );
     setComments(row.comments ?? "");
     setSelectedId(bookOutId ?? null);
-    setSelectedBookedOutTypeLabel("");
+    setSelectedGridBookedOutType("");
     setEditMode(true);
     setOrdersNotFullyDeliveredSelected(true);
     setSelectedOrdersNotFullyDeliveredRowKey(row.rowKey);
@@ -1002,151 +976,125 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     setSuccess("");
   }
 
-  async function loadCorrectionData(bookInId) {
-    setLoading(true);
-    setError("");
-    setSuccess("");
+  function handleBookingOutQuantityChange(nextQuantity) {
+    if (ordersNotFullyDeliveredSelected) {
+      const previousQty = parseFloatValue(quantity);
 
-    try {
-      const supabase = await prepareSupabaseClient();
-      if (!supabase) return;
+      if (nextQuantity === "") {
+        if (previousQty == null) {
+          setQuantity("0");
+          return;
+        }
 
-      const { data: supplierData, error: supplierError } = await supabase.rpc(
-        "pr_suppliers_active"
-      );
-      if (supplierError) throw supplierError;
-      setSupplierOptions(toOptions(supplierData));
-
-      const { data: typeData, error: typeError } = await supabase.rpc(
-        "pr_booking_out_types_active"
-      );
-      if (typeError) throw typeError;
-      const bookingOutTypes = toOptions(typeData);
-      setBookingOutTypeOptions(bookingOutTypes);
-
-      const { data, error: rpcError } = await supabase.rpc("pr_correction_data", {
-        p_booking_in_id: bookInId,
-      });
-      if (rpcError) throw rpcError;
-
-      const row = Array.isArray(data) ? data[0] : data;
-      if (!row) {
-        throw new Error("No correction data found.");
+        const previousQtyReserved = parseFloatValue(qtyReserved) ?? 0;
+        const delta = 0 - previousQty;
+        setQuantity("0");
+        setQtyReserved(String(previousQtyReserved - delta));
+        return;
       }
 
-      clearOrdersNotFullyDeliveredSelection();
-      setCorrectionMode(true);
-      setCorrectionBookingInId(
-        row.booking_in_id != null ? String(row.booking_in_id) : String(bookInId)
-      );
-      setOrderNumber(row.order_id != null ? String(row.order_id) : "");
-      setStockItemId(
-        row.stock_item_id != null ? String(row.stock_item_id) : ""
-      );
-      setStockCode(row.stock_code ?? "");
-      setDescription(row.stock_item ?? row.descr ?? row.description ?? "");
-      setQuantity(formatGridQtyToBookOut(row.qty));
-      setQtyReserved(row.qty_on_order != null ? String(row.qty_on_order) : "");
-      setCorrectionOriginalQty(row.qty != null ? String(row.qty) : "0");
-      setCorrectionOriginalQtyOnOrder(
-        row.qty_on_order != null ? String(row.qty_on_order) : ""
-      );
-      setBookingDate(todayIsoDate());
-      setUnitPrice(formatUnitPrice(row.unit_price));
-      setFormSupplierId(
-        row.supplier_id != null ? String(row.supplier_id) : ""
-      );
-      setBookingOutId("");
-      setFormCustomerId("");
-      setComments("");
-      setBookingOutTypeId(findBookingOutTypeIdByLabel(bookingOutTypes, "Correction"));
-      setReturnReasonId("");
-      setSelectedId(null);
-      setSelectedBookedOutTypeLabel("");
-      setEditMode(false);
-    } catch (err) {
-      setCorrectionMode(false);
-      setCorrectionBookingInId("");
-      setCorrectionOriginalQty("");
-      setCorrectionOriginalQtyOnOrder("");
-      setError(err.message ?? "Failed to load correction data");
-    } finally {
-      setLoading(false);
-    }
-  }
+      const nextQty = parseFloatValue(nextQuantity);
 
-  function handleBookingOutQuantityChange(nextQuantity) {
-    if (!ordersNotFullyDeliveredSelected) {
-      setQuantity(nextQuantity);
-      return;
-    }
-
-    const previousQty = parseFloatValue(quantity);
-
-    if (nextQuantity === "") {
-      if (previousQty == null) {
-        setQuantity("0");
+      if (previousQty == null || nextQty == null) {
+        setQuantity(nextQuantity);
         return;
       }
 
       const previousQtyReserved = parseFloatValue(qtyReserved) ?? 0;
-      const delta = 0 - previousQty;
-      setQuantity("0");
-      setQtyReserved(String(previousQtyReserved - delta));
+      const maxQty = previousQty + previousQtyReserved;
+      const clampedQty = Math.min(Math.max(nextQty, 0), maxQty);
+      const delta = clampedQty - previousQty;
+      const nextQtyReserved = previousQtyReserved - delta;
+
+      setQuantity(clampedQty !== nextQty ? String(clampedQty) : nextQuantity);
+      setQtyReserved(String(nextQtyReserved));
       return;
     }
 
-    const nextQty = parseFloatValue(nextQuantity);
+    const total = parseFloatValue(totalQty);
+    if (editMode && total != null) {
+      if (nextQuantity === "") {
+        setQuantity("0");
+        setQtyReserved(String(total));
+        return;
+      }
 
-    if (previousQty == null || nextQty == null) {
-      setQuantity(nextQuantity);
+      const nextQty = parseFloatValue(nextQuantity);
+      if (nextQty == null) {
+        setQuantity(nextQuantity);
+        return;
+      }
+
+      const clampedQty = Math.min(Math.max(nextQty, 0), total);
+      setQuantity(clampedQty !== nextQty ? String(clampedQty) : nextQuantity);
+      setQtyReserved(String(total - clampedQty));
       return;
     }
 
-    const previousQtyReserved = parseFloatValue(qtyReserved) ?? 0;
-    const maxQty = previousQty + previousQtyReserved;
-    const clampedQty = Math.min(Math.max(nextQty, 0), maxQty);
-    const delta = clampedQty - previousQty;
-    const nextQtyReserved = previousQtyReserved - delta;
-
-    setQuantity(clampedQty !== nextQty ? String(clampedQty) : nextQuantity);
-    setQtyReserved(String(nextQtyReserved));
+    setQuantity(nextQuantity === "" ? "0" : nextQuantity);
   }
 
-  const ordersNotFullyDeliveredMaxQuantity = useMemo(() => {
-    if (!ordersNotFullyDeliveredSelected) return undefined;
-    const qty = parseFloatValue(quantity);
-    const reserved = parseFloatValue(qtyReserved);
-    if (qty == null && reserved == null) return undefined;
-    return (qty ?? 0) + (reserved ?? 0);
-  }, [ordersNotFullyDeliveredSelected, quantity, qtyReserved]);
+  function handleBookingOutQtyReservedChange(nextQtyReserved) {
+    if (ordersNotFullyDeliveredSelected) {
+      setQtyReserved(nextQtyReserved === "" ? "0" : nextQtyReserved);
+      return;
+    }
+
+    const total = parseFloatValue(totalQty);
+    if (editMode && total != null) {
+      if (nextQtyReserved === "") {
+        setQtyReserved("0");
+        setQuantity(String(total));
+        return;
+      }
+
+      const nextReserved = parseFloatValue(nextQtyReserved);
+      if (nextReserved == null) {
+        setQtyReserved(nextQtyReserved);
+        return;
+      }
+
+      const clampedReserved = Math.min(Math.max(nextReserved, 0), total);
+      setQtyReserved(
+        clampedReserved !== nextReserved ? String(clampedReserved) : nextQtyReserved
+      );
+      setQuantity(String(total - clampedReserved));
+      return;
+    }
+
+    setQtyReserved(nextQtyReserved === "" ? "0" : nextQtyReserved);
+  }
+
+  const bookingOutQuantityMax = useMemo(() => {
+    if (ordersNotFullyDeliveredSelected) {
+      const qty = parseFloatValue(quantity);
+      const reserved = parseFloatValue(qtyReserved);
+      if (qty == null && reserved == null) return undefined;
+      return (qty ?? 0) + (reserved ?? 0);
+    }
+
+    if (editMode) {
+      const total = parseFloatValue(totalQty);
+      if (total != null) return total;
+    }
+
+    return undefined;
+  }, [ordersNotFullyDeliveredSelected, quantity, qtyReserved, editMode, totalQty]);
 
   const bookingOutHighlightActive =
-    !isOrdersOut && ordersNotFullyDeliveredSelected && !correctionMode;
-  const correctionHighlightActive = !isOrdersOut && correctionMode;
-  const showOrderNumberAndQtyReserved =
-    ordersNotFullyDeliveredSelected || correctionMode;
-  const bookingOutInputClassName = correctionHighlightActive
-    ? correctionHighlightInputClassName
-    : bookingOutHighlightActive
-      ? ordersNotFullyDeliveredHighlightInputClassName
-      : inputClassName;
-  const bookingOutReadOnlyInputClassName = correctionHighlightActive
-    ? correctionHighlightReadOnlyInputClassName
-    : bookingOutHighlightActive
-      ? ordersNotFullyDeliveredHighlightReadOnlyInputClassName
-      : readOnlyInputClassName;
-
-  const isMainGridOrderBookingOutSelected =
-    !isOrdersOut &&
-    editMode &&
-    !ordersNotFullyDeliveredSelected &&
-    selectedBookedOutTypeLabel.trim() === "Order" &&
-    (parseFloatValue(qtyReserved) ?? 0) > 0;
+    !isOrdersOut && ordersNotFullyDeliveredSelected;
+  const showOrderNumber = ordersNotFullyDeliveredSelected;
+  const showQtyToBookOut = !isOrdersOut && editMode;
+  const showQtyReserved = !isOrdersOut;
+  const qtyReservedRequired = !isOrdersOut && !editMode;
+  const bookingOutInputClassName = bookingOutHighlightActive
+    ? ordersNotFullyDeliveredHighlightInputClassName
+    : inputClassName;
+  const bookingOutReadOnlyInputClassName = bookingOutHighlightActive
+    ? ordersNotFullyDeliveredHighlightReadOnlyInputClassName
+    : readOnlyInputClassName;
 
   function handleBookingOutTypeChange(nextBookingOutTypeId) {
-    if (correctionMode) return;
-
     setBookingOutTypeId(nextBookingOutTypeId);
 
     const nextBookingOutType = bookingOutTypeOptions.find(
@@ -1188,6 +1136,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     setOrderItemId("");
     setUnitPrice("");
     setBookingDate(todayIsoDate());
+    setExpiryDate("");
     setBookingOutTypeId("");
     setFormCustomerId("");
     setOrderStatusId("");
@@ -1195,18 +1144,13 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     setComments("");
     setBookingOutId("");
     setSelectedId(null);
-    setSelectedBookedOutTypeLabel("");
     setOrderBookingOutRows([]);
     setSelectedOrderItemId(null);
     setRecordActionUser(isOrdersOut ? actionUser : "");
     setItemsExpanded(false);
     setOrderItemEditMode(false);
     clearOrdersNotFullyDeliveredSelection();
-    setCorrectionMode(false);
-    setCorrectionBookingInId("");
-    setCorrectionOriginalQty("");
-    setCorrectionOriginalQtyOnOrder("");
-    setFormSupplierId("");
+    setSelectedGridBookedOutType("");
     setEditMode(false);
     setDeleteConfirmOpen(false);
     setError("");
@@ -1242,15 +1186,30 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     }
   }
 
-  async function refreshAfterCorrectionAction(successMessage) {
-    const codeToReload = stockCode.trim();
-    const filterToReload = gridFilter;
-    initializeForm();
-    setSuccess(successMessage);
-    await refreshMainBookingOutGrid({
-      filter: filterToReload,
-      stockCode: codeToReload,
-    });
+  function buildGetStockToSellNotOrderPayload() {
+    return {
+      p_stock_item_id: parseInteger(stockItemId),
+      p_qty_to_sell: parseFloatValue(qtyReserved),
+      p_customer_id: parseInteger(formCustomerId),
+      p_orders_out_id: 0,
+      p_unit_price: parseFloatValue(unitPrice),
+      p_booking_out_type: parseInteger(bookingOutTypeId),
+      p_comments: comments.trim(),
+      p_action_user: recordActionUser.trim(),
+    };
+  }
+
+  function buildGetStockToSellPayload() {
+    return {
+      p_stock_item_id: parseInteger(stockItemId),
+      p_qty_to_sell: parseFloatValue(quantity),
+      p_customer_id: parseInteger(formCustomerId),
+      p_orders_out_id: parseInteger(bookingOutId.trim()),
+      p_unit_price: parseFloatValue(unitPrice),
+      p_booking_out_type: 6,
+      p_comments: comments.trim(),
+      p_action_user: recordActionUser.trim(),
+    };
   }
 
   function buildOrderBookingOutPayload() {
@@ -1264,6 +1223,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
       p_orders_out_id: parseInteger(bookingOutId),
       p_unit_price: parseFloatValue(unitPrice),
       p_qty_reserved: parseFloatValue(quantity),
+      p_expiry_date: "2026-11-01",
     };
   }
 
@@ -1307,6 +1267,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
       p_orders_out_id: 0,
       p_unit_price: parseFloatValue(unitPrice),
       p_qty_reserved: parseFloatValue(qtyReserved) ?? 0,
+      p_expiry_date: expiryDate.trim() || null,
     };
   }
 
@@ -1335,26 +1296,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
       p_unit_price: parseFloatValue(unitPrice),
       p_orders_out_id: parseInteger(orderNumber),
       p_qty_reserved: parseFloatValue(qtyReserved),
-    };
-  }
-
-  function buildBookingOutCorrectionPayload() {
-    return {
-      p_stock_item_id: parseInteger(stockItemId),
-      p_qty: subtractFloatValues(correctionOriginalQty, quantity),
-      p_booked_out_date: bookingDate,
-      p_booking_out_type_id: parseInteger(bookingOutTypeId),
-      p_return_reason_id: 0,
-      p_comments: comments.trim(),
-      p_action_user: recordActionUser.trim(),
-      p_customer_id: parseInteger(formSupplierId),
-      p_orders_out_id: parseInteger(orderNumber),
-      p_unit_price: parseFloatValue(unitPrice),
-      p_qty_reserved: subtractFloatValues(
-        correctionOriginalQtyOnOrder,
-        qtyReserved
-      ),
-      p_contra_id: parseInteger(correctionBookingInId),
+      p_expiry_date: expiryDate.trim() || null,
     };
   }
 
@@ -1365,14 +1307,12 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
 
     if (!stockCode.trim()) return false;
     if (!isNonZeroInteger(stockItemId)) return false;
-    if (parseFloatValue(quantity) == null) return false;
-    if (correctionMode) {
-      if (!parseInteger(bookingOutTypeId)) return false;
-      if (!comments.trim()) return false;
-      return true;
-    }
     if (ordersNotFullyDeliveredSelected) return true;
     if (!parseInteger(bookingOutTypeId)) return false;
+    if (!editMode) {
+      return parseFloatValue(qtyReserved) != null;
+    }
+    if (parseFloatValue(quantity) == null) return false;
     return true;
   }
 
@@ -1387,9 +1327,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
 
   function isAddOrderItemFormValid() {
     return (
-      isNonZeroInteger(stockItemId) &&
-      isNonZeroInteger(bookingOutId) &&
-      parseFloatValue(quantity) != null
+      isNonZeroInteger(stockItemId) && parseFloatValue(quantity) != null
     );
   }
 
@@ -1442,7 +1380,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
 
   async function handleAddOrderItem() {
     if (!isAddOrderItemFormValid()) {
-      setError("Stock item, order out number, and qty reserved are required.");
+      setError("Stock item and qty reserved are required.");
       setSuccess("");
       return;
     }
@@ -1454,16 +1392,16 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     try {
       const supabase = createClient();
       const { error: rpcError } = await supabase.rpc(
-        "pi_order_booking_out",
-        buildOrderBookingOutPayload()
+        "get_stock_to_sell_1",
+        buildGetStockToSellPayload()
       );
       if (rpcError) throw rpcError;
-      setSuccess("Order booking out saved.");
+      setSuccess("Stock to sell saved.");
       clearOrderItemFields();
       setOrderItemEditMode(false);
       await loadOrderBookingOutRows(bookingOutId);
     } catch (err) {
-      setError(err.message ?? "Failed to add order booking out");
+      setError(err.message ?? "Failed to add stock to sell");
     } finally {
       setLoading(false);
     }
@@ -1548,34 +1486,6 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     }
   }
 
-  async function handleApplyCorrectionSubmit() {
-    if (!comments.trim()) {
-      setError("Comments are required to apply a correction.");
-      setSuccess("");
-      return;
-    }
-
-    if (!isSaveFormValid()) return;
-
-    setLoading(true);
-    setError("");
-    setSuccess("");
-
-    try {
-      const supabase = createClient();
-      const { error: rpcError } = await supabase.rpc(
-        "pi_booking_out_correction",
-        buildBookingOutCorrectionPayload()
-      );
-      if (rpcError) throw rpcError;
-      await refreshAfterCorrectionAction("Booking out correction applied.");
-    } catch (err) {
-      setError(err.message ?? "Failed to apply booking out correction");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function handleSave() {
     if (!isSaveFormValid()) return;
 
@@ -1586,8 +1496,8 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     try {
       const supabase = createClient();
       const { error: rpcError } = await supabase.rpc(
-        "pi_booking_out",
-        buildBookingOutInsertPayload()
+        "get_stock_to_sell_1_not_order",
+        buildGetStockToSellNotOrderPayload()
       );
       if (rpcError) throw rpcError;
       await refreshAfterAction("Booking out saved.");
@@ -1732,17 +1642,25 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     );
 
     clearOrdersNotFullyDeliveredSelection();
-    setCorrectionMode(false);
-    setCorrectionBookingInId("");
-    setCorrectionOriginalQty("");
-    setCorrectionOriginalQtyOnOrder("");
-    setFormSupplierId("");
+    setSelectedGridBookedOutType(row.booked_out_type ?? "");
     setQuantity(formatGridQtyToBookOut(row.qty));
     setQtyReserved(
       row.qty_reserved != null ? String(row.qty_reserved) : ""
     );
+    setTotalQty(String(sumGridRowBookedOutAndReserved(row)));
+    setOrderNumber(
+      row.orders_out_id != null
+        ? String(row.orders_out_id)
+        : row.order_out_id != null
+          ? String(row.order_out_id)
+          : ""
+    );
+    setFormCustomerId(
+      row.customer_id != null ? String(row.customer_id) : ""
+    );
     setUnitPrice(formatUnitPrice(row.unit_price));
     setBookingDate(toIsoDate(row.booked_out_date));
+    setExpiryDate(row.expiry_date ? toIsoDate(row.expiry_date) : "");
     setBookingOutTypeId(
       row.booking_out_type_id != null ? String(row.booking_out_type_id) : ""
     );
@@ -1753,7 +1671,6 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     setBookingOutId(row.id != null ? String(row.id) : "");
     setRecordActionUser(row.action_user ?? "");
     setSelectedId(row.id ?? null);
-    setSelectedBookedOutTypeLabel(row.booked_out_type ?? "");
     setEditMode(true);
     setError("");
     setSuccess("");
@@ -1783,14 +1700,6 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     setOrdersNotFullyDeliveredExpanded((expanded) => !expanded);
   }
 
-  function handleApplyCorrection() {
-    const bookOutId = parseInteger(bookingOutId);
-    if (bookOutId == null) return;
-
-    storeCorrectionBookingOutId(bookOutId);
-    router.push("/booking-in");
-  }
-
   function handleItemsSectionToggle() {
     setItemsExpanded((current) => !current);
   }
@@ -1808,37 +1717,15 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
             aria-hidden="true"
             className="hidden"
           />
-          {correctionMode ? (
-            <>
-              <input
-                type="text"
-                name="booking_in_id"
-                value={correctionBookingInId}
-                readOnly
-                tabIndex={-1}
-                aria-hidden="true"
-                className="hidden"
-              />
-              <input
-                type="text"
-                name="qty"
-                value={correctionOriginalQty}
-                readOnly
-                tabIndex={-1}
-                aria-hidden="true"
-                className="hidden"
-              />
-              <input
-                type="text"
-                name="qty_on_order"
-                value={correctionOriginalQtyOnOrder}
-                readOnly
-                tabIndex={-1}
-                aria-hidden="true"
-                className="hidden"
-              />
-            </>
-          ) : null}
+          <input
+            type="text"
+            name="TotalQty"
+            value={totalQty}
+            readOnly
+            tabIndex={-1}
+            aria-hidden="true"
+            className="hidden"
+          />
         </>
       ) : null}
 
@@ -1846,7 +1733,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
         {!isOrdersOut ? (
           <div
             className={`grid grid-cols-1 gap-4 sm:max-w-2xl ${
-              showOrderNumberAndQtyReserved ? "sm:grid-cols-2" : ""
+              showOrderNumber ? "sm:grid-cols-2" : ""
             }`}
           >
             <label className="flex flex-col gap-1">
@@ -1862,14 +1749,14 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                 className={`${bookingOutReadOnlyInputClassName} w-full`}
               />
             </label>
-            {showOrderNumberAndQtyReserved ? (
+            {showOrderNumber ? (
               <label className="flex flex-col gap-1">
                 <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                  {correctionMode ? "Order In Number" : "Order Number"}
+                  Order Number
                 </span>
                 <input
                   type="text"
-                  name={correctionMode ? "order_in_id" : "order_out_id"}
+                  name="order_out_id"
                   value={orderNumber}
                   readOnly
                   tabIndex={-1}
@@ -1907,35 +1794,41 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
             }}
             stockCodeRequired
             inputClassName={bookingOutInputClassName}
+            descriptionClassName="flex min-w-0 flex-col gap-1 sm:max-w-md"
           />
         ) : null}
 
         {!isOrdersOut ? (
           <div
             className={`grid grid-cols-1 gap-4 ${
-              showOrderNumberAndQtyReserved ? "sm:grid-cols-4" : "sm:grid-cols-3"
+              showQtyToBookOut ? "sm:grid-cols-4" : "sm:grid-cols-3"
             }`}
           >
-            <label className="flex flex-col gap-1">
-              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                Qty To Book Out
-                <RequiredMarker />
-              </span>
-              <input
-                type="number"
-                step="any"
-                inputMode="decimal"
-                value={quantity}
-                max={ordersNotFullyDeliveredMaxQuantity}
-                onChange={(e) => handleBookingOutQuantityChange(e.target.value)}
-                className={`${bookingOutInputClassName} w-full`}
-              />
-            </label>
+            {showQtyToBookOut ? (
+              <label className="flex flex-col gap-1">
+                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Qty To Book Out
+                  <RequiredMarker />
+                </span>
+                <input
+                  type="number"
+                  step="any"
+                  inputMode="decimal"
+                  value={quantity}
+                  max={bookingOutQuantityMax}
+                  onChange={(e) =>
+                    handleBookingOutQuantityChange(e.target.value)
+                  }
+                  className={`${bookingOutInputClassName} w-full`}
+                />
+              </label>
+            ) : null}
 
-            {showOrderNumberAndQtyReserved ? (
+            {showQtyReserved ? (
               <label className="flex flex-col gap-1">
                 <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                   Qty Reserved
+                  {qtyReservedRequired ? <RequiredMarker /> : null}
                 </span>
                 <input
                   type="number"
@@ -1944,7 +1837,9 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                   value={qtyReserved}
                   readOnly={ordersNotFullyDeliveredSelected}
                   tabIndex={ordersNotFullyDeliveredSelected ? -1 : undefined}
-                  onChange={(e) => setQtyReserved(e.target.value)}
+                  onChange={(e) =>
+                    handleBookingOutQtyReservedChange(e.target.value)
+                  }
                   className={`${
                     ordersNotFullyDeliveredSelected
                       ? bookingOutReadOnlyInputClassName
@@ -1959,40 +1854,12 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                 Unit Price
               </span>
               <input
-                type={
-                  ordersNotFullyDeliveredSelected || correctionMode
-                    ? "number"
-                    : "text"
-                }
-                step={
-                  ordersNotFullyDeliveredSelected || correctionMode
-                    ? "any"
-                    : undefined
-                }
-                inputMode={
-                  ordersNotFullyDeliveredSelected || correctionMode
-                    ? "decimal"
-                    : undefined
-                }
+                type="number"
+                step="any"
+                inputMode="decimal"
                 value={unitPrice}
-                readOnly={
-                  !ordersNotFullyDeliveredSelected && !correctionMode
-                }
-                tabIndex={
-                  ordersNotFullyDeliveredSelected || correctionMode
-                    ? undefined
-                    : -1
-                }
-                onChange={
-                  ordersNotFullyDeliveredSelected || correctionMode
-                    ? (e) => setUnitPrice(e.target.value)
-                    : undefined
-                }
-                className={`${
-                  ordersNotFullyDeliveredSelected || correctionMode
-                    ? bookingOutInputClassName
-                    : bookingOutReadOnlyInputClassName
-                } w-full`}
+                onChange={(e) => setUnitPrice(e.target.value)}
+                className={`${bookingOutInputClassName} w-full`}
               />
             </label>
 
@@ -2040,7 +1907,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                   </select>
                 </label>
               ) : (
-                !ordersNotFullyDeliveredSelected || correctionMode ? (
+                !ordersNotFullyDeliveredSelected ? (
                   <label className="flex w-full flex-col gap-1">
                     <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                       Book-out type
@@ -2051,12 +1918,8 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                       onChange={(e) =>
                         handleBookingOutTypeChange(e.target.value)
                       }
-                      disabled={bookingOutTypesLoading || correctionMode}
-                      className={`${
-                        correctionMode
-                          ? bookingOutReadOnlyInputClassName
-                          : bookingOutInputClassName
-                      } w-full`}
+                      disabled={bookingOutTypesLoading}
+                      className={`${bookingOutInputClassName} w-full`}
                     >
                       <option value="">
                         {bookingOutTypesLoading ? "Loading…" : SELECT_PLACEHOLDER}
@@ -2085,30 +1948,6 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                     onChange={(e) => setBookingDate(e.target.value)}
                     className={inputClassName}
                   />
-                </label>
-              ) : correctionMode ? (
-                <label className="flex w-full flex-col gap-1">
-                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    Supplier
-                  </span>
-                  <select
-                    value={formSupplierId}
-                    onChange={(e) => setFormSupplierId(e.target.value)}
-                    disabled={suppliersLoading}
-                    className={`${bookingOutInputClassName} w-full`}
-                  >
-                    <option value="">
-                      {suppliersLoading ? "Loading…" : SELECT_PLACEHOLDER}
-                    </option>
-                    {supplierOptions.map((option, index) => (
-                      <option
-                        key={option.id ?? `supplier-${index}`}
-                        value={optionValue(option)}
-                      >
-                        {optionLabel(option)}
-                      </option>
-                    ))}
-                  </select>
                 </label>
               ) : (
                 <label className="flex w-full flex-col gap-1">
@@ -2218,7 +2057,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
           </div>
         </div>
 
-        {isOrdersOut ? (
+        {isOrdersOut && !hideExpandableSections ? (
           <div className="overflow-hidden rounded-lg border border-zinc-300 bg-zinc-300 dark:border-zinc-700 dark:bg-zinc-900">
             <button
               type="button"
@@ -2271,21 +2110,6 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                 />
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-                  <label className="flex flex-col gap-1">
-                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                      Qty Delivered
-                    </span>
-                    <input
-                      type="number"
-                      step="any"
-                      inputMode="decimal"
-                      value={qtyDelivered}
-                      readOnly
-                      tabIndex={-1}
-                      className={`${readOnlyInputClassName} w-full`}
-                    />
-                  </label>
-
                   <label className="flex flex-col gap-1">
                     <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                       Qty Reserved
@@ -2348,24 +2172,14 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                     </button>
                   )}
                   {orderItemEditMode && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={handleAmendOrderItem}
-                        disabled={loading || !isAmendOrderItemFormValid()}
-                        className="rounded bg-orange-200 px-4 py-2 text-sm font-medium text-orange-900 hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-100 dark:hover:bg-orange-900/60"
-                      >
-                        Amend
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleRemoveOrderItem}
-                        disabled={loading}
-                        className="rounded bg-red-200 px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60"
-                      >
-                        Remove
-                      </button>
-                    </>
+                    <button
+                      type="button"
+                      onClick={handleRemoveOrderItem}
+                      disabled={loading}
+                      className="rounded bg-red-200 px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60"
+                    >
+                      Remove
+                    </button>
                   )}
                 </div>
 
@@ -2446,7 +2260,6 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Comments
-            {correctionMode ? <RequiredMarker /> : null}
           </span>
           <textarea
             value={comments}
@@ -2477,7 +2290,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
       )}
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
-        {!editMode && !correctionMode && (
+        {!editMode && (
           <button
             type="button"
             onClick={isOrdersOut ? handleAdd : handleSave}
@@ -2488,17 +2301,6 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
           </button>
         )}
 
-        {!editMode && correctionMode ? (
-          <button
-            type="button"
-            onClick={handleApplyCorrectionSubmit}
-            disabled={loading || !isSaveFormValid()}
-            className="rounded bg-yellow-200 px-4 py-2 text-sm font-medium text-yellow-900 hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-yellow-900/40 dark:text-yellow-100 dark:hover:bg-yellow-900/60"
-          >
-            {loading ? "Saving…" : "Apply Correction"}
-          </button>
-        ) : null}
-
         {editMode && (
           <>
             <button
@@ -2508,49 +2310,34 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
             >
               New
             </button>
-            {isMainGridOrderBookingOutSelected ? (
+            <button
+              type="button"
+              onClick={handleChange}
+              disabled={loading || !isChangeFormValid() || !bookingOutId}
+              className="rounded bg-orange-200 px-4 py-2 text-sm font-medium text-orange-900 hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-100 dark:hover:bg-orange-900/60"
+            >
+              {loading ? "Saving…" : "Change"}
+            </button>
+            {!ordersNotFullyDeliveredSelected || isOrdersOut ? (
               <button
                 type="button"
-                onClick={handleApplyCorrection}
-                disabled={loading}
-                className="rounded bg-yellow-200 px-4 py-2 text-sm font-medium text-yellow-900 hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-yellow-900/40 dark:text-yellow-100 dark:hover:bg-yellow-900/60"
+                onClick={handleDeleteClick}
+                disabled={loading || !bookingOutId}
+                className="rounded bg-red-200 px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60"
               >
-                Make a Correction
+                {loading ? "Saving…" : "Delete"}
               </button>
-            ) : correctionMode ? (
-              <button
-                type="button"
-                onClick={handleApplyCorrectionSubmit}
-                disabled={loading || !isSaveFormValid()}
-                className="rounded bg-yellow-200 px-4 py-2 text-sm font-medium text-yellow-900 hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-yellow-900/40 dark:text-yellow-100 dark:hover:bg-yellow-900/60"
-              >
-                {loading ? "Saving…" : "Apply Correction"}
-              </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={handleChange}
-                  disabled={loading || !isChangeFormValid() || !bookingOutId}
-                  className="rounded bg-orange-200 px-4 py-2 text-sm font-medium text-orange-900 hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-100 dark:hover:bg-orange-900/60"
-                >
-                  {loading ? "Saving…" : "Change"}
-                </button>
-                {!ordersNotFullyDeliveredSelected || isOrdersOut ? (
-                  <button
-                    type="button"
-                    onClick={handleDeleteClick}
-                    disabled={loading || !bookingOutId}
-                    className="rounded bg-red-200 px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60"
-                  >
-                    {loading ? "Saving…" : "Delete"}
-                  </button>
-                ) : null}
-              </>
-            )}
+            ) : null}
           </>
         )}
       </div>
+
+      {isOrdersOut ? (
+        <p className="mt-2 text-sm text-blue-600 dark:text-blue-400">
+          The grid below is filtered by the Customer selected in the &quot;Customer&quot;
+          dropdown.
+        </p>
+      ) : null}
 
       {deleteConfirmOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -2600,7 +2387,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                 id="order-out-corrections-title"
                 className="text-base font-semibold text-zinc-900 dark:text-zinc-50"
               >
-                Order Out Corrections
+                Order Audit History
                 {correctionsBookingOutId != null
                   ? ` — No. ${correctionsBookingOutId}`
                   : ""}
@@ -2908,7 +2695,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
         </table>
       </div>
 
-      {!isOrdersOut ? (
+      {!isOrdersOut && !hideExpandableSections ? (
         <div className="mt-6 overflow-hidden rounded-lg border border-zinc-200 bg-yellow-100 dark:border-zinc-800 dark:bg-yellow-900/30">
           <button
             type="button"

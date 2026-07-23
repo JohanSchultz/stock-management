@@ -13,11 +13,6 @@ import {
   prepareSupabaseClient,
   useSupabaseIdleRecovery,
 } from "@/lib/supabase/useSupabaseIdleRecovery";
-import {
-  consumeCorrectionBookingOutId,
-  storeCorrectionBookingInId,
-} from "@/lib/bookingCorrection";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 const inputClassName =
@@ -31,12 +26,6 @@ const ordersNotFullyBookedInHighlightInputClassName =
 
 const ordersNotFullyBookedInHighlightReadOnlyInputClassName =
   "rounded border border-zinc-300 bg-yellow-100 px-3 py-2 text-zinc-800 read-only:cursor-default dark:border-zinc-600 dark:bg-yellow-900/30 dark:text-zinc-200";
-
-const correctionHighlightInputClassName =
-  "rounded border border-zinc-300 bg-orange-100 px-3 py-2 text-zinc-800 dark:border-zinc-600 dark:bg-orange-900/30 dark:text-zinc-200";
-
-const correctionHighlightReadOnlyInputClassName =
-  "rounded border border-zinc-300 bg-orange-100 px-3 py-2 text-zinc-800 read-only:cursor-default dark:border-zinc-600 dark:bg-orange-900/30 dark:text-zinc-200";
 
 const ORDERS_NOT_FULLY_BOOKED_IN_HIDDEN_COLUMNS = new Set([
   "supplier_id",
@@ -187,38 +176,6 @@ function showsReturnReason(bookingInTypeLabel) {
   return label === "Returned" || label === "Credit";
 }
 
-function findBookingInTypeIdByLabel(options, label) {
-  const normalizedLabel = label.trim().toLowerCase();
-  const match = options.find(
-    (option) => optionLabel(option).trim().toLowerCase() === normalizedLabel
-  );
-  return match ? optionValue(match) : "";
-}
-
-function normalizeCustomerOptions(data) {
-  if (!Array.isArray(data)) return [];
-
-  return data
-    .map((row, index) => ({
-      id: row.id ?? row.customer_id ?? null,
-      descr: row.descr ?? row.customer ?? row.description ?? row.name ?? "",
-      is_active: row.is_active,
-      optionKey: `customer-option-${index}`,
-    }))
-    .sort((left, right) => optionLabel(left).localeCompare(optionLabel(right)));
-}
-
-function formatGridQtyToBookIn(value) {
-  if (value == null || value === "") return "0";
-  return String(value);
-}
-
-function subtractFloatValues(minuend, subtrahend) {
-  const left = parseFloatValue(minuend) ?? 0;
-  const right = parseFloatValue(subtrahend) ?? 0;
-  return left - right;
-}
-
 function reportBackgroundLoadError(context, err, setError) {
   if (isFetchFailure(err)) {
     console.warn(`${context}: network error after idle or offline`, err);
@@ -249,7 +206,7 @@ function getOrderInCorrectionsColumnKeys(rows) {
 
   for (const row of rows) {
     for (const key of Object.keys(row)) {
-      if (key !== "rowKey") {
+      if (key !== "rowKey" && key !== "contra_id") {
         keys.add(key);
       }
     }
@@ -290,8 +247,10 @@ function normalizeBookingInRows(data) {
     stock_item: row.stock_item ?? row.descr ?? "",
     qty: row.qty ?? row.quantity ?? null,
     qty_on_order: row.qty_on_order ?? null,
+    orders_in_id: row.orders_in_id ?? row.order_in_id ?? null,
     unit_price: row.unit_price ?? row.unitPrice ?? null,
     booked_in_date: row.booked_in_date ?? row.booking_date ?? null,
+    expiry_date: row.expiry_date ?? null,
     supplier_id: row.supplier_id ?? null,
     booking_in_type_id: row.booking_in_type_id ?? null,
     booked_in_type:
@@ -441,9 +400,9 @@ function normalizeOrdersInRows(data) {
 
 export function BookingInForm({ variant = "booking-in" } = {}) {
   useSupabaseIdleRecovery();
-  const router = useRouter();
 
   const isOrdersIn = variant === "orders-in";
+  const hideExpandableSections = variant === "booking-in";
   const numberFieldLabel = isOrdersIn ? "Order In Number" : "Book In Number";
 
   const [stockCode, setStockCode] = useState("");
@@ -456,6 +415,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
   const [orderItemId, setOrderItemId] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
   const [bookingDate, setBookingDate] = useState(todayIsoDate);
+  const [expiryDate, setExpiryDate] = useState("");
   const [bookingInTypeId, setBookingInTypeId] = useState("");
   const [bookingInTypeOptions, setBookingInTypeOptions] = useState([]);
   const [bookingInTypesLoading, setBookingInTypesLoading] = useState(false);
@@ -494,17 +454,9 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     useState(false);
   const [selectedOrdersNotFullyBookedInRowKey, setSelectedOrdersNotFullyBookedInRowKey] =
     useState(null);
-  const [selectedBookedInTypeLabel, setSelectedBookedInTypeLabel] = useState("");
+  const [selectedGridBookedInType, setSelectedGridBookedInType] = useState("");
   const [editMode, setEditMode] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [correctionMode, setCorrectionMode] = useState(false);
-  const [correctionBookingOutId, setCorrectionBookingOutId] = useState("");
-  const [correctionOriginalQty, setCorrectionOriginalQty] = useState("");
-  const [correctionOriginalQtyOnOrder, setCorrectionOriginalQtyOnOrder] =
-    useState("");
-  const [formCustomerId, setFormCustomerId] = useState("");
-  const [customerOptions, setCustomerOptions] = useState([]);
-  const [customersLoading, setCustomersLoading] = useState(false);
   const [correctionsOpen, setCorrectionsOpen] = useState(false);
   const [correctionsBookingInId, setCorrectionsBookingInId] = useState(null);
   const [correctionsRows, setCorrectionsRows] = useState([]);
@@ -519,7 +471,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     if (isOrdersIn) {
       return computeOrderItemTotalPrice(quantity, qtyDelivered, unitPrice);
     }
-    if (ordersNotFullyBookedInSelected || correctionMode) {
+    if (ordersNotFullyBookedInSelected) {
       return computeOrdersNotFullyBookedInTotalPrice(
         quantity,
         qtyOnOrder,
@@ -530,7 +482,6 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
   }, [
     isOrdersIn,
     ordersNotFullyBookedInSelected,
-    correctionMode,
     quantity,
     qtyOnOrder,
     qtyDelivered,
@@ -564,14 +515,6 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     setOrdersNotFullyBookedInExpanded((expanded) => !expanded);
   }
 
-  function handleApplyCorrection() {
-    const bookInId = parseInteger(bookingInId);
-    if (bookInId == null) return;
-
-    storeCorrectionBookingInId(bookInId);
-    router.push("/booking-out");
-  }
-
   function clearOrdersNotFullyBookedInSelection() {
     setOrdersNotFullyBookedInSelected(false);
     setSelectedOrdersNotFullyBookedInRowKey(null);
@@ -580,12 +523,6 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
   }
 
   function handleOrdersNotFullyBookedInRowClick(row) {
-    setCorrectionMode(false);
-    setCorrectionBookingOutId("");
-    setCorrectionOriginalQty("");
-    setCorrectionOriginalQtyOnOrder("");
-    setFormCustomerId("");
-
     const bookInId = row.book_in_id ?? row.id;
     const matchingBookingInRow = bookingInRows.find(
       (gridRow) =>
@@ -603,6 +540,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
       row.supplier_id != null ? String(row.supplier_id) : ""
     );
     setBookingDate(toIsoDate(row.date_placed));
+    setExpiryDate(row.expiry_date ? toIsoDate(row.expiry_date) : "");
     setRecordActionUser(row.action_user ?? "");
     setQuantity(row.qty_on_hand != null ? String(row.qty_on_hand) : "");
     setQtyOnOrder(row.qty_on_order != null ? String(row.qty_on_order) : "");
@@ -623,7 +561,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     );
     setComments(row.comments ?? "");
     setSelectedId(bookInId ?? null);
-    setSelectedBookedInTypeLabel("");
+    setSelectedGridBookedInType("");
     setEditMode(true);
     setOrdersNotFullyBookedInSelected(true);
     setSelectedOrdersNotFullyBookedInRowKey(row.rowKey);
@@ -678,27 +616,13 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
   }, [ordersNotFullyBookedInSelected, quantity, qtyOnOrder]);
 
   const bookingInHighlightActive =
-    !isOrdersIn && ordersNotFullyBookedInSelected && !correctionMode;
-  const correctionHighlightActive = !isOrdersIn && correctionMode;
-  const showOrderNumberAndQtyOnOrder =
-    ordersNotFullyBookedInSelected || correctionMode;
-  const bookingInInputClassName = correctionHighlightActive
-    ? correctionHighlightInputClassName
-    : bookingInHighlightActive
-      ? ordersNotFullyBookedInHighlightInputClassName
-      : inputClassName;
-  const bookingInReadOnlyInputClassName = correctionHighlightActive
-    ? correctionHighlightReadOnlyInputClassName
-    : bookingInHighlightActive
-      ? ordersNotFullyBookedInHighlightReadOnlyInputClassName
-      : readOnlyInputClassName;
-
-  const isMainGridOrderBookingInSelected =
-    !isOrdersIn &&
-    editMode &&
-    !ordersNotFullyBookedInSelected &&
-    !correctionMode &&
-    selectedBookedInTypeLabel.trim() === "Order";
+    !isOrdersIn && ordersNotFullyBookedInSelected;
+  const bookingInInputClassName = bookingInHighlightActive
+    ? ordersNotFullyBookedInHighlightInputClassName
+    : inputClassName;
+  const bookingInReadOnlyInputClassName = bookingInHighlightActive
+    ? ordersNotFullyBookedInHighlightReadOnlyInputClassName
+    : readOnlyInputClassName;
 
   const ordersNotFullyBookedInColumns = useMemo(
     () => getOrdersNotFullyBookedInColumnKeys(ordersNotFullyBookedInRows),
@@ -920,11 +844,18 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
       if (!supabase) return;
 
       const user = await getSessionUser(supabase);
-      setActionUser(sessionUserLabel(user));
+      const label = sessionUserLabel(user);
+      setActionUser(label);
+      setRecordActionUser((current) => (current === "" ? label : current));
     } catch (err) {
       reportBackgroundLoadError("Failed to load signed-in user", err, setError);
     }
   }, []);
+
+  useEffect(() => {
+    if (!isOrdersIn || editMode || !actionUser) return;
+    setRecordActionUser(actionUser);
+  }, [isOrdersIn, editMode, actionUser]);
 
   useEffect(() => {
     if (!isOrdersIn) {
@@ -970,18 +901,6 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
   }, [isOrdersIn, loadOrdersNotFullyBookedInRows]);
 
   useEffect(() => {
-    if (isOrdersIn) return;
-
-    const storedId = consumeCorrectionBookingOutId();
-    if (!storedId) return;
-
-    const bookOutId = parseInteger(storedId);
-    if (bookOutId == null) return;
-
-    loadCorrectionOutData(bookOutId);
-  }, [isOrdersIn]);
-
-  useEffect(() => {
     if (!isOrdersIn) return;
     loadOrdersInRows();
   }, [isOrdersIn, formSupplierId, loadOrdersInRows]);
@@ -1015,10 +934,16 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     ? optionLabel(selectedBookingInType)
     : "";
   const returnReasonVisible = showsReturnReason(selectedBookingInTypeLabel);
+  const isMainGridOrderBookingInSelected =
+    !isOrdersIn &&
+    editMode &&
+    !ordersNotFullyBookedInSelected &&
+    selectedGridBookedInType.trim() === "Order";
+  const showOrderNumber = ordersNotFullyBookedInSelected;
+  const showQtyOnOrder =
+    ordersNotFullyBookedInSelected || isMainGridOrderBookingInSelected;
 
   function handleBookingInTypeChange(nextBookingInTypeId) {
-    if (correctionMode) return;
-
     setBookingInTypeId(nextBookingInTypeId);
 
     const nextBookingInType = bookingInTypeOptions.find(
@@ -1061,6 +986,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     setOrderItemId("");
     setUnitPrice("");
     setBookingDate(todayIsoDate());
+    setExpiryDate("");
     setBookingInTypeId("");
     setReturnReasonId("");
     setFormSupplierId("");
@@ -1073,124 +999,12 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     setOrderBookingInRows([]);
     setOrderItemEditMode(false);
     clearOrdersNotFullyBookedInSelection();
-    setCorrectionMode(false);
-    setCorrectionBookingOutId("");
-    setCorrectionOriginalQty("");
-    setCorrectionOriginalQtyOnOrder("");
-    setFormCustomerId("");
-    setRecordActionUser("");
-    setSelectedBookedInTypeLabel("");
+    setSelectedGridBookedInType("");
+    setRecordActionUser(isOrdersIn ? actionUser : "");
     setEditMode(false);
     setDeleteConfirmOpen(false);
     setError("");
     setSuccess("");
-  }
-
-  async function loadCorrectionOutData(bookOutId) {
-    setLoading(true);
-    setError("");
-    setSuccess("");
-
-    try {
-      const supabase = await prepareSupabaseClient();
-      if (!supabase) return;
-
-      const { data: customerData, error: customerError } = await supabase.rpc(
-        "pr_customer_active"
-      );
-      if (customerError) throw customerError;
-      setCustomerOptions(normalizeCustomerOptions(customerData));
-
-      const { data: typeData, error: typeError } = await supabase.rpc(
-        "pr_booking_in_types_active"
-      );
-      if (typeError) throw typeError;
-      const bookingInTypes = toOptions(typeData);
-      setBookingInTypeOptions(bookingInTypes);
-
-      const { data, error: rpcError } = await supabase.rpc(
-        "pr_correction_out_data",
-        { p_booking_out_id: bookOutId }
-      );
-      if (rpcError) throw rpcError;
-
-      const row = Array.isArray(data) ? data[0] : data;
-      if (!row) {
-        throw new Error("No correction data found.");
-      }
-
-      clearOrdersNotFullyBookedInSelection();
-      setCorrectionMode(true);
-      setCorrectionBookingOutId(
-        row.booking_out_id != null
-          ? String(row.booking_out_id)
-          : String(bookOutId)
-      );
-      setOrderNumber(row.order_id != null ? String(row.order_id) : "");
-      setStockItemId(
-        row.stock_item_id != null ? String(row.stock_item_id) : ""
-      );
-      setStockCode(row.stock_code ?? "");
-      setDescription(row.stock_item ?? row.descr ?? row.description ?? "");
-      setQuantity(formatGridQtyToBookIn(row.qty));
-      setQtyOnOrder(row.qty_reserved != null ? String(row.qty_reserved) : "");
-      setCorrectionOriginalQty(row.qty != null ? String(row.qty) : "0");
-      setCorrectionOriginalQtyOnOrder(
-        row.qty_on_order != null ? String(row.qty_on_order) : ""
-      );
-      setRecordActionUser(actionUser.trim());
-      setBookingDate(todayIsoDate());
-      setUnitPrice(formatUnitPrice(row.unit_price));
-      setFormCustomerId(
-        row.customer_id != null ? String(row.customer_id) : ""
-      );
-      setBookingInId("");
-      setFormSupplierId("");
-      setComments("");
-      setBookingInTypeId(findBookingInTypeIdByLabel(bookingInTypes, "Correction"));
-      setReturnReasonId("");
-      setSelectedId(null);
-      setSelectedBookedInTypeLabel("");
-      setEditMode(false);
-    } catch (err) {
-      setCorrectionMode(false);
-      setCorrectionBookingOutId("");
-      setCorrectionOriginalQty("");
-      setCorrectionOriginalQtyOnOrder("");
-      setError(err.message ?? "Failed to load correction data");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleApplyCorrectionSubmit() {
-    if (!comments.trim()) {
-      setError("Comments are required to apply a correction.");
-      setSuccess("");
-      return;
-    }
-
-    if (!isSaveFormValid()) return;
-
-    setLoading(true);
-    setError("");
-    setSuccess("");
-
-    try {
-      const supabase = await prepareSupabaseClient();
-      if (!supabase) return;
-
-      const { error: rpcError } = await supabase.rpc(
-        "pi_booking_in_correction",
-        buildBookingInCorrectionPayload()
-      );
-      if (rpcError) throw rpcError;
-      await refreshAfterCorrectionAction("Booking in correction applied.");
-    } catch (err) {
-      setError(err.message ?? "Failed to apply booking in correction");
-    } finally {
-      setLoading(false);
-    }
   }
 
   async function refreshMainBookingInGrid(override = {}) {
@@ -1219,17 +1033,6 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
       });
       await loadOrdersNotFullyBookedInRows();
     }
-  }
-
-  async function refreshAfterCorrectionAction(successMessage) {
-    const codeToReload = stockCode.trim();
-    const filterToReload = gridFilter;
-    initializeForm();
-    setSuccess(successMessage);
-    await refreshMainBookingInGrid({
-      filter: filterToReload,
-      stockCode: codeToReload,
-    });
   }
 
   function buildOrderBookingInPayload() {
@@ -1283,6 +1086,9 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
       p_comments: comments.trim(),
       p_action_user: actionUser,
       p_unit_price: parseFloatValue(unitPrice),
+      p_orders_in_id: parseInteger(orderNumber),
+      p_qty_on_order: parseFloatValue(qtyOnOrder),
+      p_expiry_date: expiryDate.trim() || null,
     };
   }
 
@@ -1301,8 +1107,6 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     return {
       p_id: parseInteger(bookingInId),
       ...buildBookingInPayload(),
-      p_orders_in_id: parseInteger(orderNumber),
-      p_qty_on_order: parseFloatValue(qtyOnOrder),
     };
   }
 
@@ -1320,26 +1124,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
       p_unit_price: parseFloatValue(unitPrice),
       p_orders_in_id: parseInteger(orderNumber),
       p_qty_on_order: parseFloatValue(qtyOnOrder),
-    };
-  }
-
-  function buildBookingInCorrectionPayload() {
-    return {
-      p_stock_item_id: parseInteger(stockItemId),
-      p_qty: subtractFloatValues(correctionOriginalQty, quantity),
-      p_booked_in_date: bookingDate,
-      p_booking_in_type_id: parseInteger(bookingInTypeId),
-      p_return_reason_id: 0,
-      p_comments: comments.trim(),
-      p_action_user: recordActionUser.trim(),
-      p_supplier_id: parseInteger(formCustomerId),
-      p_orders_in_id: parseInteger(orderNumber),
-      p_unit_price: parseFloatValue(unitPrice),
-      p_qty_on_order: subtractFloatValues(
-        correctionOriginalQtyOnOrder,
-        qtyOnOrder
-      ),
-      p_contra_id: parseInteger(correctionBookingOutId),
+      p_expiry_date: expiryDate.trim() || null,
     };
   }
 
@@ -1351,11 +1136,6 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     if (!stockCode.trim()) return false;
     if (!isNonZeroInteger(stockItemId)) return false;
     if (parseFloatValue(quantity) == null) return false;
-    if (correctionMode) {
-      if (!parseInteger(bookingInTypeId)) return false;
-      if (!comments.trim()) return false;
-      return true;
-    }
     if (ordersNotFullyBookedInSelected) return true;
     if (!parseInteger(bookingInTypeId)) return false;
     return true;
@@ -1675,12 +1455,6 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
       return;
     }
 
-    setCorrectionMode(false);
-    setCorrectionBookingOutId("");
-    setCorrectionOriginalQty("");
-    setCorrectionOriginalQtyOnOrder("");
-    setFormCustomerId("");
-
     setStockCode(row.stock_code ?? "");
     setDescription(row.description ?? "");
     setStockItemId(
@@ -1689,7 +1463,17 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     setQuantity(row.qty != null ? String(row.qty) : "");
     setUnitPrice(formatUnitPrice(row.unit_price));
     clearOrdersNotFullyBookedInSelection();
+    setSelectedGridBookedInType(row.booked_in_type ?? "");
+    setQtyOnOrder(row.qty_on_order != null ? String(row.qty_on_order) : "");
+    setOrderNumber(
+      row.orders_in_id != null
+        ? String(row.orders_in_id)
+        : row.order_in_id != null
+          ? String(row.order_in_id)
+          : ""
+    );
     setBookingDate(toIsoDate(row.booked_in_date));
+    setExpiryDate(row.expiry_date ? toIsoDate(row.expiry_date) : "");
     setBookingInTypeId(
       row.booking_in_type_id != null ? String(row.booking_in_type_id) : ""
     );
@@ -1707,7 +1491,6 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     setBookingInId(row.id != null ? String(row.id) : "");
     setRecordActionUser(row.action_user ?? "");
     setSelectedId(row.id ?? null);
-    setSelectedBookedInTypeLabel(row.booked_in_type ?? "");
     setEditMode(true);
     setError("");
     setSuccess("");
@@ -1736,48 +1519,15 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
   return (
     <div className="mt-4 w-full">
       {!isOrdersIn ? (
-        <>
-          <input
-            type="text"
-            name="stock_item_id"
-            value={stockItemId}
-            readOnly
-            tabIndex={-1}
-            aria-hidden="true"
-            className="hidden"
-          />
-          {correctionMode ? (
-            <>
-              <input
-                type="text"
-                name="booking_out_id"
-                value={correctionBookingOutId}
-                readOnly
-                tabIndex={-1}
-                aria-hidden="true"
-                className="hidden"
-              />
-              <input
-                type="text"
-                name="qty"
-                value={correctionOriginalQty}
-                readOnly
-                tabIndex={-1}
-                aria-hidden="true"
-                className="hidden"
-              />
-              <input
-                type="text"
-                name="qty_on_order"
-                value={correctionOriginalQtyOnOrder}
-                readOnly
-                tabIndex={-1}
-                aria-hidden="true"
-                className="hidden"
-              />
-            </>
-          ) : null}
-        </>
+        <input
+          type="text"
+          name="stock_item_id"
+          value={stockItemId}
+          readOnly
+          tabIndex={-1}
+          aria-hidden="true"
+          className="hidden"
+        />
       ) : null}
       {isOrdersIn ? (
         <input
@@ -1795,7 +1545,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
         {!isOrdersIn ? (
           <div
             className={`grid grid-cols-1 gap-4 sm:max-w-2xl ${
-              showOrderNumberAndQtyOnOrder ? "sm:grid-cols-2" : ""
+              showOrderNumber ? "sm:grid-cols-2" : ""
             }`}
           >
             <label className="flex flex-col gap-1">
@@ -1811,14 +1561,14 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                 className={`${bookingInReadOnlyInputClassName} w-full`}
               />
             </label>
-            {showOrderNumberAndQtyOnOrder ? (
+            {showOrderNumber ? (
               <label className="flex flex-col gap-1">
                 <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                  {correctionMode ? "Order Out Number" : "Order Number"}
+                  Order Number
                 </span>
                 <input
                   type="text"
-                  name={correctionMode ? "order_out_id" : "order_in_id"}
+                  name="order_in_id"
                   value={orderNumber}
                   readOnly
                   tabIndex={-1}
@@ -1925,7 +1675,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
           </>
         ) : null}
 
-        {isOrdersIn ? (
+        {isOrdersIn && !hideExpandableSections ? (
           <div className="overflow-hidden rounded-lg border border-zinc-300 bg-zinc-300 dark:border-zinc-700 dark:bg-zinc-900">
             <button
               type="button"
@@ -2182,11 +1932,25 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
               }}
               stockCodeRequired
               inputClassName={bookingInInputClassName}
+              descriptionClassName="flex min-w-0 flex-col gap-1 sm:max-w-md"
+              afterDescription={
+                <label className="flex flex-col gap-1 sm:w-48 sm:shrink-0">
+                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    Expiry Date
+                  </span>
+                  <input
+                    type="date"
+                    value={expiryDate}
+                    onChange={(e) => setExpiryDate(e.target.value)}
+                    className={bookingInInputClassName}
+                  />
+                </label>
+              }
             />
 
             <div
               className={`grid grid-cols-1 gap-4 ${
-                showOrderNumberAndQtyOnOrder ? "sm:grid-cols-4" : "sm:grid-cols-3"
+                showQtyOnOrder ? "sm:grid-cols-4" : "sm:grid-cols-3"
               }`}
             >
               <label className="flex flex-col gap-1">
@@ -2205,7 +1969,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                 />
               </label>
 
-              {showOrderNumberAndQtyOnOrder ? (
+              {showQtyOnOrder ? (
                 <label className="flex flex-col gap-1">
                   <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                     Qty On Order
@@ -2217,11 +1981,6 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                     value={qtyOnOrder}
                     readOnly={ordersNotFullyBookedInSelected}
                     tabIndex={ordersNotFullyBookedInSelected ? -1 : undefined}
-                    onChange={
-                      correctionMode
-                        ? (e) => setQtyOnOrder(e.target.value)
-                        : undefined
-                    }
                     className={`${
                       ordersNotFullyBookedInSelected
                         ? bookingInReadOnlyInputClassName
@@ -2264,7 +2023,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
         {!isOrdersIn ? (
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
             <div className="flex flex-col gap-4 sm:flex-row sm:flex-1">
-              {!ordersNotFullyBookedInSelected || correctionMode ? (
+              {!ordersNotFullyBookedInSelected ? (
                 <label className="flex w-full flex-col gap-1 sm:max-w-xs sm:flex-1">
                   <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                     Book-in type
@@ -2273,12 +2032,8 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                   <select
                     value={bookingInTypeId}
                     onChange={(e) => handleBookingInTypeChange(e.target.value)}
-                    disabled={bookingInTypesLoading || correctionMode}
-                    className={`${
-                      correctionMode
-                        ? bookingInReadOnlyInputClassName
-                        : bookingInInputClassName
-                    } w-full`}
+                    disabled={bookingInTypesLoading}
+                    className={`${bookingInInputClassName} w-full`}
                   >
                     <option value="">
                       {bookingInTypesLoading ? "Loading…" : SELECT_PLACEHOLDER}
@@ -2352,70 +2107,41 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
         ) : null}
 
         {!isOrdersIn ? (
-          correctionMode ? (
-            <label className="flex w-full flex-col gap-1 sm:max-w-xs">
-              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                Customer
-              </span>
-              <select
-                value={formCustomerId}
-                onChange={(e) => setFormCustomerId(e.target.value)}
-                disabled={customersLoading}
-                className={bookingInInputClassName}
-              >
-                <option value="">
-                  {customersLoading ? "Loading…" : SELECT_PLACEHOLDER}
+          <label className="flex w-full flex-col gap-1 sm:max-w-xs">
+            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Supplier
+            </span>
+            <select
+              value={formSupplierId}
+              onChange={(e) => setFormSupplierId(e.target.value)}
+              disabled={suppliersLoading}
+              className={bookingInInputClassName}
+            >
+              <option value="">
+                {suppliersLoading ? "Loading…" : SELECT_PLACEHOLDER}
+              </option>
+              {supplierOptions.map((option, index) => (
+                <option
+                  key={option.id ?? `supplier-${index}`}
+                  value={optionValue(option)}
+                >
+                  {optionLabel(option)}
                 </option>
-                {customerOptions.map((option, index) => (
-                  <option
-                    key={option.optionKey ?? `customer-${index}`}
-                    value={optionValue(option)}
-                  >
-                    {optionLabel(option)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <label className="flex w-full flex-col gap-1 sm:max-w-xs">
-              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                Supplier
-              </span>
-              <select
-                value={formSupplierId}
-                onChange={(e) => setFormSupplierId(e.target.value)}
-                disabled={suppliersLoading}
-                className={bookingInInputClassName}
-              >
-                <option value="">
-                  {suppliersLoading ? "Loading…" : SELECT_PLACEHOLDER}
-                </option>
-                {supplierOptions.map((option, index) => (
-                  <option
-                    key={option.id ?? `supplier-${index}`}
-                    value={optionValue(option)}
-                  >
-                    {optionLabel(option)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )
+              ))}
+            </select>
+          </label>
         ) : null}
 
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Comments
-            {correctionMode ? <RequiredMarker /> : null}
           </span>
           <textarea
             value={comments}
             onChange={(e) => setComments(e.target.value)}
             rows={3}
             className={
-              bookingInHighlightActive || correctionHighlightActive
-                ? bookingInInputClassName
-                : inputClassName
+              bookingInHighlightActive ? bookingInInputClassName : inputClassName
             }
           />
         </label>
@@ -2439,7 +2165,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
       )}
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
-        {!editMode && !correctionMode && (
+        {!editMode && (
           <button
             type="button"
             onClick={handleSave}
@@ -2450,17 +2176,6 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
           </button>
         )}
 
-        {!editMode && correctionMode ? (
-          <button
-            type="button"
-            onClick={handleApplyCorrectionSubmit}
-            disabled={loading || !isSaveFormValid()}
-            className="rounded bg-yellow-200 px-4 py-2 text-sm font-medium text-yellow-900 hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-yellow-900/40 dark:text-yellow-100 dark:hover:bg-yellow-900/60"
-          >
-            {loading ? "Saving…" : "Apply Correction"}
-          </button>
-        ) : null}
-
         {editMode && (
           <>
             <button
@@ -2470,49 +2185,34 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
             >
               New
             </button>
-            {isMainGridOrderBookingInSelected ? (
+            <button
+              type="button"
+              onClick={handleChange}
+              disabled={loading || !isChangeFormValid() || !bookingInId}
+              className="rounded bg-orange-200 px-4 py-2 text-sm font-medium text-orange-900 hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-100 dark:hover:bg-orange-900/60"
+            >
+              {loading ? "Saving…" : "Change"}
+            </button>
+            {!ordersNotFullyBookedInSelected || isOrdersIn ? (
               <button
                 type="button"
-                onClick={handleApplyCorrection}
-                disabled={loading}
-                className="rounded bg-yellow-200 px-4 py-2 text-sm font-medium text-yellow-900 hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-yellow-900/40 dark:text-yellow-100 dark:hover:bg-yellow-900/60"
+                onClick={handleDeleteClick}
+                disabled={loading || !bookingInId}
+                className="rounded bg-red-200 px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60"
               >
-                Make a Correction
+                {loading ? "Saving…" : "Delete"}
               </button>
-            ) : correctionMode ? (
-              <button
-                type="button"
-                onClick={handleApplyCorrectionSubmit}
-                disabled={loading || !isSaveFormValid()}
-                className="rounded bg-yellow-200 px-4 py-2 text-sm font-medium text-yellow-900 hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-yellow-900/40 dark:text-yellow-100 dark:hover:bg-yellow-900/60"
-              >
-                {loading ? "Saving…" : "Apply Correction"}
-              </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={handleChange}
-                  disabled={loading || !isChangeFormValid() || !bookingInId}
-                  className="rounded bg-orange-200 px-4 py-2 text-sm font-medium text-orange-900 hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-100 dark:hover:bg-orange-900/60"
-                >
-                  {loading ? "Saving…" : "Change"}
-                </button>
-                {!ordersNotFullyBookedInSelected || isOrdersIn ? (
-                  <button
-                    type="button"
-                    onClick={handleDeleteClick}
-                    disabled={loading || !bookingInId}
-                    className="rounded bg-red-200 px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60"
-                  >
-                    {loading ? "Saving…" : "Delete"}
-                  </button>
-                ) : null}
-              </>
-            )}
+            ) : null}
           </>
         )}
       </div>
+
+      {isOrdersIn ? (
+        <p className="mt-2 text-sm text-blue-600 dark:text-blue-400">
+          The grid below is filtered by the Supplier selected in the &quot;Supplier&quot;
+          dropdown.
+        </p>
+      ) : null}
 
       {deleteConfirmOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -2564,7 +2264,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                 id="order-in-corrections-title"
                 className="text-base font-semibold text-zinc-900 dark:text-zinc-50"
               >
-                Order In Corrections
+                Order Audit History
                 {correctionsBookingInId != null
                   ? ` — No. ${correctionsBookingInId}`
                   : ""}
@@ -2866,7 +2566,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
         </table>
       </div>
 
-      {!isOrdersIn ? (
+      {!isOrdersIn && !hideExpandableSections ? (
         <div className="mt-6 overflow-hidden rounded-lg border border-zinc-200 bg-yellow-100 dark:border-zinc-800 dark:bg-yellow-900/30">
           <button
             type="button"

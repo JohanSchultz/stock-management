@@ -44,6 +44,8 @@ export function StockItemLookupFields({
   onClear,
   stockCodeRequired = false,
   inputClassName: inputClassNameProp = inputClassName,
+  descriptionClassName = "flex min-w-0 flex-1 flex-col gap-1",
+  afterDescription = null,
 }) {
   const [itemLookupOpen, setItemLookupOpen] = useState(false);
   const [itemLookupRows, setItemLookupRows] = useState([]);
@@ -116,7 +118,9 @@ export function StockItemLookupFields({
 
   return (
     <>
-      <div className="flex flex-col gap-4 sm:flex-row">
+      <div
+        className={`flex flex-col gap-4 sm:flex-row${afterDescription ? " sm:items-end" : ""}`}
+      >
         <label className="flex w-full flex-col gap-1 sm:w-40 sm:shrink-0">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Stock Code
@@ -149,7 +153,7 @@ export function StockItemLookupFields({
           </div>
         </label>
 
-        <label className="flex min-w-0 flex-1 flex-col gap-1">
+        <label className={descriptionClassName}>
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Description
           </span>
@@ -169,6 +173,8 @@ export function StockItemLookupFields({
             </button>
           </div>
         </label>
+
+        {afterDescription}
       </div>
 
       {itemLookupOpen ? (

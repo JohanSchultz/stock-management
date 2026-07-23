@@ -15,9 +15,16 @@ function TreeNode({ node, depth = 0 }) {
       return (
         <li>
           <span
-            className="flex w-full items-center rounded px-2 py-1.5 text-left text-sm font-medium text-zinc-800 dark:text-zinc-200"
+            className={`flex w-full items-center rounded px-2 py-1.5 text-left text-sm ${
+              depth === 0
+                ? "font-medium text-zinc-800 dark:text-zinc-200"
+                : "text-zinc-700 dark:text-zinc-300"
+            }`}
             style={{ paddingLeft: `${depth * 1.25 + 0.5}rem` }}
           >
+            {depth > 0 ? (
+              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-zinc-400 dark:bg-zinc-500" />
+            ) : null}
             {node.label}
           </span>
         </li>
