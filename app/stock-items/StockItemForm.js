@@ -11,6 +11,15 @@ const adjoinedButtonClassName =
 
 const SELECT_PLACEHOLDER = " -SELECT- ";
 
+function RequiredMarker() {
+  return (
+    <span className="text-red-600 dark:text-red-400" aria-hidden="true">
+      {" "}
+      *
+    </span>
+  );
+}
+
 function toOptions(data) {
   return Array.isArray(data) ? data : [];
 }
@@ -442,6 +451,7 @@ export function StockItemForm() {
         <label className="flex w-full flex-col gap-1 sm:w-40 sm:shrink-0">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Stock Code
+            <RequiredMarker />
           </span>
           <div className="flex">
             <input
@@ -463,6 +473,7 @@ export function StockItemForm() {
         <label className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Description
+            <RequiredMarker />
           </span>
           <div className="flex">
             <input
@@ -574,6 +585,7 @@ export function StockItemForm() {
           <label className="flex w-[45%] min-w-0 flex-col gap-1">
             <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
               Unit Type
+              <RequiredMarker />
             </span>
             <select
               value={unitTypeId}
@@ -598,6 +610,7 @@ export function StockItemForm() {
           <label className="flex w-[45%] min-w-0 flex-col gap-1">
             <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
               Unit Quantity
+              <RequiredMarker />
             </span>
             <input
               type="number"
@@ -613,6 +626,7 @@ export function StockItemForm() {
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Category
+            <RequiredMarker />
           </span>
           <select
             value={categoryId}
@@ -637,6 +651,7 @@ export function StockItemForm() {
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Sub-category
+            <RequiredMarker />
           </span>
           <select
             value={subcategoryId}
@@ -663,6 +678,7 @@ export function StockItemForm() {
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Width (cm)
+            <RequiredMarker />
           </span>
           <input
             type="number"
@@ -677,6 +693,7 @@ export function StockItemForm() {
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Length (cm)
+            <RequiredMarker />
           </span>
           <input
             type="number"
@@ -691,6 +708,7 @@ export function StockItemForm() {
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Height (cm)
+            <RequiredMarker />
           </span>
           <input
             type="number"
@@ -707,6 +725,7 @@ export function StockItemForm() {
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Location
+            <RequiredMarker />
           </span>
           <select
             value={locationId}
@@ -731,6 +750,7 @@ export function StockItemForm() {
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Unit Price
+            <RequiredMarker />
           </span>
           <input
             type="number"

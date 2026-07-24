@@ -484,6 +484,12 @@ export function OrderReports() {
         />
       </div>
 
+      {!loading && rows.length > 0 ? (
+        <p className="mt-2 text-sm text-blue-600 dark:text-blue-400">
+          Click an item in the grid above to see the items of the order.
+        </p>
+      ) : null}
+
       <div className="mt-4">
         <ReportGrid
           rows={lineRows}
