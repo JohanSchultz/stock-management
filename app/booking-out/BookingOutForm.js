@@ -215,7 +215,7 @@ function formatBookingOutColumnHeader(key) {
   if (normalized === "id") return "No.";
   if (normalized === "qty") return "Qty Booked Out";
   if (normalized === "booked_out_date") return "Date";
-  if (normalized === "has_corrections") return "Has Corrections";
+  if (normalized === "has_corrections") return "History";
 
   return key
     .replace(/_/g, " ")
@@ -414,11 +414,23 @@ function formatHasCorrectionsValue(contraId) {
   return contraId == null ? "No" : "Yes";
 }
 
+const ORDER_OUT_CORRECTIONS_COLUMN_ORDER = [
+  "id",
+  "stock_code",
+  "descr",
+  "description",
+  "qty",
+  "unit_price",
+  "booked_out_date",
+  "action_user",
+];
+
 function normalizeOrderOutCorrectionsRows(data) {
   if (!Array.isArray(data)) return [];
 
   return data.map((row, index) => ({
     ...row,
+    unit_price: row.unit_price ?? row.unitPrice ?? null,
     rowKey:
       row.id != null
         ? `order-out-correction-${row.id}`
@@ -428,20 +440,38 @@ function normalizeOrderOutCorrectionsRows(data) {
 
 function getOrderOutCorrectionsColumnKeys(rows) {
   const keys = new Set();
+  const keyByLower = new Map();
 
   for (const row of rows) {
     for (const key of Object.keys(row)) {
-      if (key !== "rowKey" && key !== "contra_id") {
+      if (
+        key !== "rowKey" &&
+        key !== "contra_id" &&
+        key !== "stock_item_id"
+      ) {
         keys.add(key);
+        keyByLower.set(key.trim().toLowerCase(), key);
       }
     }
   }
 
-  return Array.from(keys);
+  const ordered = [];
+  for (const column of ORDER_OUT_CORRECTIONS_COLUMN_ORDER) {
+    const actualKey = keyByLower.get(column);
+    if (actualKey) {
+      ordered.push(actualKey);
+      keys.delete(actualKey);
+    }
+  }
+
+  return [...ordered, ...Array.from(keys)];
 }
 
 function formatOrderOutCorrectionsCellValue(value, column) {
   if (value == null || value === "") return "";
+  if (column.trim().toLowerCase() === "unit_price") {
+    return formatUnitPrice(value);
+  }
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (
     column.toLowerCase().includes("date") &&
@@ -454,8 +484,9 @@ function formatOrderOutCorrectionsCellValue(value, column) {
 
 function formatOrderOutCorrectionsColumnHeader(key) {
   const normalized = key.trim().toLowerCase();
-  if (normalized === "id") return "Booking In No";
+  if (normalized === "id") return "Audit No";
   if (normalized === "contra_id") return "Booking Out No";
+  if (normalized === "unit_price") return "Unit Price";
 
   return formatBookingOutColumnHeader(key);
 }
@@ -2578,7 +2609,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                   Date
                 </th>
                 <th className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                  Has Corrections
+                  History
                 </th>
               </tr>
             )}
@@ -2674,19 +2705,15 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                     {formatBookingOutCellValue(row.booked_out_date, "booked_out_date")}
                   </td>
                   <td className="whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200">
-                    {row.contra_id == null ? (
-                      "No"
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={(event) =>
-                          handleCorrectionsButtonClick(event, row.id)
-                        }
-                        className="rounded bg-sky-200 px-2 py-0.5 text-xs font-medium text-sky-900 hover:bg-sky-300 dark:bg-sky-900/40 dark:text-sky-100 dark:hover:bg-sky-900/60"
-                      >
-                        Yes
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={(event) =>
+                        handleCorrectionsButtonClick(event, row.id)
+                      }
+                      className="rounded bg-sky-200 px-2 py-0.5 text-xs font-medium text-sky-900 hover:bg-sky-300 dark:bg-sky-900/40 dark:text-sky-100 dark:hover:bg-sky-900/60"
+                    >
+                      View
+                    </button>
                   </td>
                 </tr>
               ))

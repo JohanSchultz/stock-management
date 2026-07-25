@@ -206,7 +206,11 @@ function getOrderInCorrectionsColumnKeys(rows) {
 
   for (const row of rows) {
     for (const key of Object.keys(row)) {
-      if (key !== "rowKey" && key !== "contra_id") {
+      if (
+        key !== "rowKey" &&
+        key !== "contra_id" &&
+        key !== "stock_item_id"
+      ) {
         keys.add(key);
       }
     }
@@ -229,7 +233,7 @@ function formatOrderInCorrectionsCellValue(value, column) {
 
 function formatOrderInCorrectionsColumnHeader(key) {
   const normalized = key.trim().toLowerCase();
-  if (normalized === "id") return "Booking Out No";
+  if (normalized === "id") return "Audit No";
   if (normalized === "contra_id") return "Booking In No";
 
   return formatGridColumnHeader(key);
@@ -328,7 +332,7 @@ function formatGridColumnHeader(key) {
   if (normalized === "id") return "No.";
   if (normalized === "qty") return "Qty Booked In";
   if (normalized === "booked_in_date") return "Date";
-  if (normalized === "has_corrections") return "Has Corrections";
+  if (normalized === "has_corrections") return "History";
 
   return key
     .replace(/_/g, " ")
@@ -2453,7 +2457,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                   Date
                 </th>
                 <th className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                  Has Corrections
+                  History
                 </th>
               </tr>
             )}
@@ -2545,19 +2549,15 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                     {formatBookingInGridCellValue(row.booked_in_date, "booked_in_date")}
                   </td>
                   <td className="whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200">
-                    {row.contra_id == null ? (
-                      "No"
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={(event) =>
-                          handleCorrectionsButtonClick(event, row.id)
-                        }
-                        className="rounded bg-sky-200 px-2 py-0.5 text-xs font-medium text-sky-900 hover:bg-sky-300 dark:bg-sky-900/40 dark:text-sky-100 dark:hover:bg-sky-900/60"
-                      >
-                        Yes
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={(event) =>
+                        handleCorrectionsButtonClick(event, row.id)
+                      }
+                      className="rounded bg-sky-200 px-2 py-0.5 text-xs font-medium text-sky-900 hover:bg-sky-300 dark:bg-sky-900/40 dark:text-sky-100 dark:hover:bg-sky-900/60"
+                    >
+                      View
+                    </button>
                   </td>
                 </tr>
               ))
