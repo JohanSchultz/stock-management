@@ -4,35 +4,59 @@ pr_functions
 
 
 
-pu_booking_out
-pu_booking_in
-pr_order_booking_out
-pr_order_booking_in
+*pu_booking_out
+*pu_booking_in
+
+*pr_order_booking_out
+*pr_order_booking_in
+
+pr_booking_out_last_three_months
 pr_booking_out_by_stock_code
 pr_booking_out_all
 pr_booking_in_last_three_months
 pr_booking_in_by_stock_code
 pr_booking_in_all
-pi_order_booking_out
-pi_order_booking_in
+
+*pi_order_booking_out
+*pi_order_booking_in
 *pi_booking_out
-pi_booking_in
+*pi_booking_in
 
 
-
-
+pr_correction_data
+pr_correction_out_data
 
 
 pr_orders_out_by_customer
 pr_orders_not_fully_delivered
 pr_orders_not_fully_booked_in
 pr_orders_in_by_supplier
-pr_booking_out_last_three_months
 
 
+On the booking-out page, when clicking the Add button, from now on call a different function: CREATE OR REPLACE FUNCTION public.get_stock_to_sell_1_not_order(p_stock_item_id integer,p_qty_to_sell double precision,p_customer_id bigint DEFAULT NULL,p_orders_out_id bigint DEFAULT NULL,p_unit_price double precision DEFAULT NULL,p_booking_out_type integer DEFAULT NULL,p_comments text DEFAULT NULL,p_action_user text DEFAULT NULL).
+As parameter values, pass the following:
+The value in the invisible stock_item_id textbox,
+The value in the Qty Reserved textbox,
+The id value of the item selected in the Customer dropdown,
+The integer 0 (zero),
+The value in the Unit Price textbox,
+The id value of the item selected in the Book-out type dropdown,
+The text in the Comments textbox,
+The text in the Action User textbox
+respectively.
 
 
-
+On the booking-out page, when clicking the Add button, from now on call a different function: CREATE OR REPLACE FUNCTION public.get_stock_to_sell_1_not_order(p_stock_item_id integer,p_qty_to_sell double precision,p_customer_id bigint DEFAULT NULL,p_orders_out_id bigint DEFAULT NULL,p_unit_price double precision DEFAULT NULL,p_booking_out_type integer DEFAULT NULL,p_comments text DEFAULT NULL,p_action_user text DEFAULT NULL).
+As parameter values, pass the following:
+The value in the invisible stock_item_id textbox,
+The value in the Qty Reserved textbox,
+The id value of the item selected in the Customer dropdown,
+The integer 0 (zero),
+The value in the Unit Price textbox,
+The id value of the item selected in the Book-out type dropdown,
+The text in the Comments textbox,
+The text in the Action User textbox
+respectively.
 
 
 

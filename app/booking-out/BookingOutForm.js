@@ -41,15 +41,20 @@ const ORDERS_NOT_FULLY_DELIVERED_HIDDEN_COLUMNS = new Set([
   "return_reason_id",
 ]);
 
-const GRID_FILTER_ALL = "all";
-const GRID_FILTER_BY_STOCK_CODE = "byStockCode";
-const GRID_FILTER_LAST_THREE_MONTHS = "lastThreeMonths";
-
 function todayIsoDate() {
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function threeMonthsBeforeTodayIsoDate() {
+  const date = new Date();
+  date.setMonth(date.getMonth() - 3);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
@@ -79,6 +84,14 @@ function optionLabel(option) {
 function optionValue(option) {
   const id = option.id ?? option.customer_id;
   return id != null ? String(id) : "";
+}
+
+function isOrderPlacedStatusOption(option) {
+  return optionLabel(option).trim() === "Order Placed";
+}
+
+function isOrderBookingOutTypeOption(option) {
+  return optionLabel(option).trim() === "Order";
 }
 
 function normalizeCustomerOptions(data) {
@@ -414,23 +427,56 @@ function formatHasCorrectionsValue(contraId) {
   return contraId == null ? "No" : "Yes";
 }
 
-const ORDER_OUT_CORRECTIONS_COLUMN_ORDER = [
-  "id",
-  "stock_code",
-  "descr",
-  "description",
-  "qty",
-  "unit_price",
-  "booked_out_date",
-  "action_user",
+const ORDER_OUT_CORRECTIONS_COLUMNS = [
+  { key: "id", header: "Audit No" },
+  { key: "action", header: "Action" },
+  { key: "stock_code", header: "Stock Code" },
+  { key: "qty", header: "Qty Booked Out" },
+  { key: "qty_reserved", header: "Qty Reserved" },
+  { key: "booked_out_date", header: "Date" },
+  { key: "customer", header: "Customer" },
+  { key: "action_user", header: "Action User" },
 ];
+
+const CORRECTIONS_MONTH_NAMES = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+function formatCorrectionsDateTime(value) {
+  if (value == null || value === "") return "";
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const month = CORRECTIONS_MONTH_NAMES[parsed.getMonth()];
+  const year = parsed.getFullYear();
+  const hours = String(parsed.getHours()).padStart(2, "0");
+  const minutes = String(parsed.getMinutes()).padStart(2, "0");
+  return `${day} ${month} ${year} ${hours}:${minutes}`;
+}
 
 function normalizeOrderOutCorrectionsRows(data) {
   if (!Array.isArray(data)) return [];
 
   return data.map((row, index) => ({
-    ...row,
-    unit_price: row.unit_price ?? row.unitPrice ?? null,
+    id: row.id ?? null,
+    action: row.action ?? "",
+    stock_code: row.stock_code ?? "",
+    qty: row.qty ?? row.quantity ?? null,
+    qty_reserved: row.qty_reserved ?? null,
+    booked_out_date: row.booked_out_date ?? row.date ?? null,
+    customer: row.customer ?? row.customer_name ?? "",
+    action_user: row.action_user ?? "",
     rowKey:
       row.id != null
         ? `order-out-correction-${row.id}`
@@ -438,57 +484,25 @@ function normalizeOrderOutCorrectionsRows(data) {
   }));
 }
 
-function getOrderOutCorrectionsColumnKeys(rows) {
-  const keys = new Set();
-  const keyByLower = new Map();
-
-  for (const row of rows) {
-    for (const key of Object.keys(row)) {
-      if (
-        key !== "rowKey" &&
-        key !== "contra_id" &&
-        key !== "stock_item_id"
-      ) {
-        keys.add(key);
-        keyByLower.set(key.trim().toLowerCase(), key);
-      }
-    }
-  }
-
-  const ordered = [];
-  for (const column of ORDER_OUT_CORRECTIONS_COLUMN_ORDER) {
-    const actualKey = keyByLower.get(column);
-    if (actualKey) {
-      ordered.push(actualKey);
-      keys.delete(actualKey);
-    }
-  }
-
-  return [...ordered, ...Array.from(keys)];
+function getOrderOutCorrectionsColumnKeys() {
+  return ORDER_OUT_CORRECTIONS_COLUMNS.map((column) => column.key);
 }
 
 function formatOrderOutCorrectionsCellValue(value, column) {
   if (value == null || value === "") return "";
-  if (column.trim().toLowerCase() === "unit_price") {
-    return formatUnitPrice(value);
+  if (column.trim().toLowerCase() === "booked_out_date") {
+    return formatCorrectionsDateTime(value);
   }
   if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (
-    column.toLowerCase().includes("date") &&
-    (typeof value === "string" || value instanceof Date)
-  ) {
-    return toIsoDate(value);
-  }
   return String(value);
 }
 
 function formatOrderOutCorrectionsColumnHeader(key) {
   const normalized = key.trim().toLowerCase();
-  if (normalized === "id") return "Audit No";
-  if (normalized === "contra_id") return "Booking Out No";
-  if (normalized === "unit_price") return "Unit Price";
-
-  return formatBookingOutColumnHeader(key);
+  const column = ORDER_OUT_CORRECTIONS_COLUMNS.find(
+    (entry) => entry.key === normalized
+  );
+  return column?.header ?? key;
 }
 
 function normalizeBookingOutRows(data) {
@@ -580,7 +594,12 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
   ] = useState(null);
   const [selectedGridBookedOutType, setSelectedGridBookedOutType] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
-  const [gridFilter, setGridFilter] = useState(GRID_FILTER_ALL);
+  const [filterFromDate, setFilterFromDate] = useState(
+    threeMonthsBeforeTodayIsoDate
+  );
+  const [filterToDate, setFilterToDate] = useState(todayIsoDate);
+  const [searchFilterStockCode, setSearchFilterStockCode] = useState("");
+  const [searchStockCodeId, setSearchStockCodeId] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [gridLoading, setGridLoading] = useState(false);
@@ -635,8 +654,8 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
   );
 
   const orderOutCorrectionsColumns = useMemo(
-    () => getOrderOutCorrectionsColumnKeys(correctionsRows),
-    [correctionsRows]
+    () => getOrderOutCorrectionsColumnKeys(),
+    []
   );
 
   const loadBookingOutTypes = useCallback(async () => {
@@ -718,36 +737,28 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
   }, []);
 
   const loadBookingOutRows = useCallback(async (override = {}) => {
-    const filter = override.filter ?? gridFilter;
-    const searchCode = (
-      override.stockCode !== undefined ? override.stockCode : stockCode
-    ).trim();
+    const fromDate =
+      override.fromDate !== undefined ? override.fromDate : filterFromDate;
+    const toDate = override.toDate !== undefined ? override.toDate : filterToDate;
+    const stockItemIdParam =
+      override.searchStockCodeId !== undefined
+        ? override.searchStockCodeId
+        : searchStockCodeId;
+
     setGridLoading(true);
 
     try {
       const supabase = await prepareSupabaseClient();
       if (!supabase) return;
 
-      let data;
-      let rpcError;
-
-      if (filter === GRID_FILTER_BY_STOCK_CODE) {
-        if (!searchCode) {
-          setBookingOutRows([]);
-          return;
+      const { data, error: rpcError } = await supabase.rpc(
+        "pr_booking_out_by_filters",
+        {
+          p_from: fromDate || null,
+          p_to: toDate || null,
+          p_stock_item_id: parseInteger(stockItemIdParam) ?? 0,
         }
-
-        ({ data, error: rpcError } = await supabase.rpc(
-          "pr_booking_out_by_stock_code",
-          { p_stock_code: searchCode }
-        ));
-      } else if (filter === GRID_FILTER_LAST_THREE_MONTHS) {
-        ({ data, error: rpcError } = await supabase.rpc(
-          "pr_booking_out_last_three_months"
-        ));
-      } else {
-        ({ data, error: rpcError } = await supabase.rpc("pr_booking_out_all"));
-      }
+      );
 
       if (rpcError) throw rpcError;
       setBookingOutRows(normalizeBookingOutRows(data));
@@ -761,7 +772,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     } finally {
       setGridLoading(false);
     }
-  }, [gridFilter, stockCode]);
+  }, [filterFromDate, filterToDate, searchStockCodeId]);
 
   const loadOrdersOutRows = useCallback(async (overrideCustomerId) => {
     setGridLoading(true);
@@ -883,20 +894,8 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
 
   useEffect(() => {
     if (isOrdersOut) return;
-    if (
-      gridFilter === GRID_FILTER_ALL ||
-      gridFilter === GRID_FILTER_LAST_THREE_MONTHS
-    ) {
-      loadBookingOutRows({ filter: gridFilter });
-    }
-  }, [gridFilter, loadBookingOutRows, isOrdersOut]);
-
-  useEffect(() => {
-    if (isOrdersOut) return;
-    if (gridFilter === GRID_FILTER_BY_STOCK_CODE) {
-      loadBookingOutRows({ filter: gridFilter, stockCode });
-    }
-  }, [gridFilter, stockCode, loadBookingOutRows, isOrdersOut]);
+    loadBookingOutRows();
+  }, [filterFromDate, filterToDate, searchStockCodeId, loadBookingOutRows, isOrdersOut]);
 
   useEffect(() => {
     if (isOrdersOut) return;
@@ -944,6 +943,20 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     : "";
   const returnReasonVisible =
     !isOrdersOut && showsReturnReason(selectedBookingOutTypeLabel);
+  const isMainGridOrderBookingOutSelected =
+    !isOrdersOut &&
+    editMode &&
+    !ordersNotFullyDeliveredSelected &&
+    selectedGridBookedOutType.trim() === "Order";
+  const visibleBookingOutTypeOptions = useMemo(() => {
+    if (isMainGridOrderBookingOutSelected) {
+      return bookingOutTypeOptions;
+    }
+
+    return bookingOutTypeOptions.filter(
+      (option) => !isOrderBookingOutTypeOption(option)
+    );
+  }, [bookingOutTypeOptions, isMainGridOrderBookingOutSelected]);
 
   function clearOrdersNotFullyDeliveredSelection() {
     setOrdersNotFullyDeliveredSelected(false);
@@ -1066,6 +1079,10 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
   }
 
   function handleBookingOutQtyReservedChange(nextQtyReserved) {
+    if (nextQtyReserved.includes("-")) {
+      return;
+    }
+
     if (ordersNotFullyDeliveredSelected) {
       setQtyReserved(nextQtyReserved === "" ? "0" : nextQtyReserved);
       return;
@@ -1112,6 +1129,20 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     return undefined;
   }, [ordersNotFullyDeliveredSelected, quantity, qtyReserved, editMode, totalQty]);
 
+  const isOrdersOutSaveMode = isOrdersOut && !editMode;
+  const orderPlacedStatusId = useMemo(() => {
+    const orderPlacedOption = orderStatusOptions.find(isOrderPlacedStatusOption);
+    return orderPlacedOption ? optionValue(orderPlacedOption) : "";
+  }, [orderStatusOptions]);
+  const displayedOrderStatusId = isOrdersOutSaveMode
+    ? orderPlacedStatusId || orderStatusId
+    : orderStatusId;
+
+  useEffect(() => {
+    if (!isOrdersOutSaveMode || !orderPlacedStatusId) return;
+    setOrderStatusId(orderPlacedStatusId);
+  }, [isOrdersOutSaveMode, orderPlacedStatusId]);
+
   const bookingOutHighlightActive =
     !isOrdersOut && ordersNotFullyDeliveredSelected;
   const showOrderNumber = ordersNotFullyDeliveredSelected;
@@ -1126,6 +1157,10 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     : readOnlyInputClassName;
 
   function handleBookingOutTypeChange(nextBookingOutTypeId) {
+    if (isMainGridOrderBookingOutSelected) {
+      return;
+    }
+
     setBookingOutTypeId(nextBookingOutTypeId);
 
     const nextBookingOutType = bookingOutTypeOptions.find(
@@ -1136,6 +1171,16 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     if (!showsReturnReason(nextLabel)) {
       setReturnReasonId("");
     }
+  }
+
+  function handleFilterStockItemSelect(row) {
+    setSearchFilterStockCode(row.stock_code ?? "");
+    setSearchStockCodeId(row.id != null ? String(row.id) : "");
+  }
+
+  function handleFilterStockItemClear() {
+    setSearchFilterStockCode("");
+    setSearchStockCodeId("");
   }
 
   async function handleStockItemSelect(row) {
@@ -1189,30 +1234,17 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
   }
 
   async function refreshMainBookingOutGrid(override = {}) {
-    const filterToReload = override.filter ?? gridFilter;
-    const codeToReload =
-      override.stockCode !== undefined ? override.stockCode : stockCode.trim();
-
-    await loadBookingOutRows({
-      filter: filterToReload,
-      stockCode:
-        filterToReload === GRID_FILTER_BY_STOCK_CODE ? codeToReload : "",
-    });
+    await loadBookingOutRows(override);
   }
 
   async function refreshAfterAction(successMessage) {
-    const codeToReload = stockCode.trim();
     const customerToReload = formCustomerId;
-    const filterToReload = gridFilter;
     initializeForm();
     setSuccess(successMessage);
     if (isOrdersOut) {
       await loadOrdersOutRows(customerToReload);
     } else {
-      await refreshMainBookingOutGrid({
-        filter: filterToReload,
-        stockCode: codeToReload,
-      });
+      await refreshMainBookingOutGrid();
       await loadOrdersNotFullyDeliveredRows();
     }
   }
@@ -1865,12 +1897,18 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                   type="number"
                   step="any"
                   inputMode="decimal"
+                  min="0"
                   value={qtyReserved}
                   readOnly={ordersNotFullyDeliveredSelected}
                   tabIndex={ordersNotFullyDeliveredSelected ? -1 : undefined}
                   onChange={(e) =>
                     handleBookingOutQtyReservedChange(e.target.value)
                   }
+                  onKeyDown={(e) => {
+                    if (e.key === "-" || e.key === "Subtract") {
+                      e.preventDefault();
+                    }
+                  }}
                   className={`${
                     ordersNotFullyDeliveredSelected
                       ? bookingOutReadOnlyInputClassName
@@ -1949,13 +1987,19 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                       onChange={(e) =>
                         handleBookingOutTypeChange(e.target.value)
                       }
-                      disabled={bookingOutTypesLoading}
-                      className={`${bookingOutInputClassName} w-full`}
+                      disabled={
+                        bookingOutTypesLoading || isMainGridOrderBookingOutSelected
+                      }
+                      className={`${
+                        isMainGridOrderBookingOutSelected
+                          ? bookingOutReadOnlyInputClassName
+                          : bookingOutInputClassName
+                      } w-full`}
                     >
                       <option value="">
                         {bookingOutTypesLoading ? "Loading…" : SELECT_PLACEHOLDER}
                       </option>
-                      {bookingOutTypeOptions.map((option, index) => (
+                      {visibleBookingOutTypeOptions.map((option, index) => (
                         <option
                           key={option.id ?? `booking-out-type-${index}`}
                           value={optionValue(option)}
@@ -2041,10 +2085,12 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                   Order Status
                 </span>
                 <select
-                  value={orderStatusId}
+                  value={displayedOrderStatusId}
                   onChange={(e) => setOrderStatusId(e.target.value)}
-                  disabled={orderStatusesLoading}
-                  className={`${inputClassName} w-full`}
+                  disabled={orderStatusesLoading || isOrdersOutSaveMode}
+                  className={`${
+                    isOrdersOutSaveMode ? readOnlyInputClassName : inputClassName
+                  } w-full`}
                 >
                   <option value="">
                     {orderStatusesLoading ? "Loading…" : SELECT_PLACEHOLDER}
@@ -2503,57 +2549,63 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
         </div>
       ) : null}
 
-      <div className="mt-6 flex flex-wrap items-center gap-3">
-        {!isOrdersOut ? (
-          <>
-            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              Grid Filtered By:
-            </span>
-            <fieldset className="rounded-lg border border-zinc-300 px-4 py-3 dark:border-zinc-600">
-              <legend className="sr-only">Grid filter</legend>
-              <div
-                role="radiogroup"
-                aria-label="Grid filter"
-                className="flex flex-wrap items-center gap-4"
-              >
-                <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
-                  <input
-                    type="radio"
-                    name="gridFilter"
-                    value={GRID_FILTER_ALL}
-                    checked={gridFilter === GRID_FILTER_ALL}
-                    onChange={() => setGridFilter(GRID_FILTER_ALL)}
-                    className="h-4 w-4 border-zinc-300 text-emerald-600 focus:ring-emerald-500"
-                  />
-                  All
-                </label>
-                <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
-                  <input
-                    type="radio"
-                    name="gridFilter"
-                    value={GRID_FILTER_BY_STOCK_CODE}
-                    checked={gridFilter === GRID_FILTER_BY_STOCK_CODE}
-                    onChange={() => setGridFilter(GRID_FILTER_BY_STOCK_CODE)}
-                    className="h-4 w-4 border-zinc-300 text-emerald-600 focus:ring-emerald-500"
-                  />
-                  By Stock Code
-                </label>
-                <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
-                  <input
-                    type="radio"
-                    name="gridFilter"
-                    value={GRID_FILTER_LAST_THREE_MONTHS}
-                    checked={gridFilter === GRID_FILTER_LAST_THREE_MONTHS}
-                    onChange={() => setGridFilter(GRID_FILTER_LAST_THREE_MONTHS)}
-                    className="h-4 w-4 border-zinc-300 text-emerald-600 focus:ring-emerald-500"
-                  />
-                  Last 3 Months
-                </label>
+      {!isOrdersOut ? (
+        <div className="mt-6">
+          <p className="mb-2 text-sm font-bold text-zinc-800 dark:text-zinc-200">
+            Grid Filtering:
+          </p>
+          <div className="rounded-lg border border-zinc-300 bg-zinc-100 p-4 dark:border-zinc-600 dark:bg-zinc-800/50">
+            <div className="flex flex-wrap items-end gap-4">
+              <label className="flex flex-col gap-1 sm:w-48">
+                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  From
+                </span>
+                <input
+                  type="date"
+                  value={filterFromDate}
+                  onChange={(e) => setFilterFromDate(e.target.value)}
+                  className={inputClassName}
+                />
+              </label>
+
+              <label className="flex flex-col gap-1 sm:w-48">
+                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  To
+                </span>
+                <input
+                  type="date"
+                  value={filterToDate}
+                  onChange={(e) => setFilterToDate(e.target.value)}
+                  className={inputClassName}
+                />
+              </label>
+
+              <div className="w-full sm:w-40 sm:shrink-0">
+                <StockItemLookupFields
+                  stockCode={searchFilterStockCode}
+                  description=""
+                  onStockCodeChange={setSearchFilterStockCode}
+                  onDescriptionChange={() => {}}
+                  onSelect={handleFilterStockItemSelect}
+                  onClear={handleFilterStockItemClear}
+                  showDescription={false}
+                  inputClassName={inputClassName}
+                />
               </div>
-            </fieldset>
-          </>
-        ) : null}
-      </div>
+            </div>
+
+            <input
+              type="text"
+              name="search_stock_code_id"
+              value={searchStockCodeId}
+              readOnly
+              tabIndex={-1}
+              aria-hidden="true"
+              className="hidden"
+            />
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-4 overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
         <table className="w-full min-w-max text-left text-sm">

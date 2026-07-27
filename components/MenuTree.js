@@ -5,10 +5,12 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { menuTree } from "@/lib/menu/menuTree";
 
-function TreeNode({ node, depth = 0 }) {
+function TreeNode({ node, depth = 0, defaultCollapsedIds = [] }) {
   const pathname = usePathname();
   const hasChildren = node.children?.length > 0;
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(
+    !defaultCollapsedIds.includes(node.id)
+  );
 
   if (!hasChildren) {
     if (!node.href) {
@@ -73,7 +75,12 @@ function TreeNode({ node, depth = 0 }) {
       {expanded && (
         <ul className="mt-0.5">
           {node.children.map((child) => (
-            <TreeNode key={child.id} node={child} depth={depth + 1} />
+            <TreeNode
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              defaultCollapsedIds={defaultCollapsedIds}
+            />
           ))}
         </ul>
       )}
@@ -81,12 +88,16 @@ function TreeNode({ node, depth = 0 }) {
   );
 }
 
-export function MenuTree({ tree = menuTree }) {
+export function MenuTree({ tree = menuTree, defaultCollapsedIds = [] }) {
   return (
     <nav aria-label="Application menu">
       <ul className="flex flex-col gap-0.5">
         {tree.map((node) => (
-          <TreeNode key={node.id} node={node} />
+          <TreeNode
+            key={node.id}
+            node={node}
+            defaultCollapsedIds={defaultCollapsedIds}
+          />
         ))}
       </ul>
     </nav>

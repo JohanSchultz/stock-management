@@ -1,0 +1,12 @@
+1. Sprocs met verwysing na id's van bv, booking_in_types soos Orders en Stock Level Adjustment.
+*2. Keer negatiewe qties oral.
+*3. Filtering op bookin_in en _out vorms.
+*4. Sit tyd by datums op Audit popups.
+*5. "Order" moenie as Booking In Type gekies kan word op booking-in nie. En Quarentine maak nie sin nie.
+*6. Order status "Order Placed" op orders-in vorm
+7. 2 aksies om iets uit te boek
+
+
+
+
+On the booking-in page, when an item in the grid with an "Booked In Type" value of "Order" is selected, place the sum of the "Qty Booked In" and the "Qty On Order" textboxes into an invisible textbox called total_qty.Then, when the user changes the value in the "Qty To Book In" textbox, change the value in the "Qty On Order" textbox such that the sum of the values in the textboxes equal the value in the total_qty textbox.

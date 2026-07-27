@@ -43,6 +43,7 @@ export function StockItemLookupFields({
   onSelect,
   onClear,
   stockCodeRequired = false,
+  showDescription = true,
   inputClassName: inputClassNameProp = inputClassName,
   descriptionClassName = "flex min-w-0 flex-1 flex-col gap-1",
   afterDescription = null,
@@ -112,7 +113,9 @@ export function StockItemLookupFields({
 
   function handleClearStockFields() {
     onStockCodeChange("");
-    onDescriptionChange("");
+    if (showDescription) {
+      onDescriptionChange("");
+    }
     onClear?.();
   }
 
@@ -137,7 +140,11 @@ export function StockItemLookupFields({
               <button
                 type="button"
                 onClick={handleClearStockFields}
-                aria-label="Clear stock code and description"
+                aria-label={
+                  showDescription
+                    ? "Clear stock code and description"
+                    : "Clear stock code"
+                }
                 className="absolute right-1 top-1 px-1 text-sm font-bold leading-none text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
               >
                 X
@@ -153,26 +160,28 @@ export function StockItemLookupFields({
           </div>
         </label>
 
-        <label className={descriptionClassName}>
-          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Description
-          </span>
-          <div className="flex">
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => onDescriptionChange(e.target.value)}
-              className={`${inputClassNameProp} min-w-0 flex-1 rounded-r-none border-r-0`}
-            />
-            <button
-              type="button"
-              onClick={handleDescriptionLookup}
-              className={adjoinedButtonClassName}
-            >
-              &gt;&gt;
-            </button>
-          </div>
-        </label>
+        {showDescription ? (
+          <label className={descriptionClassName}>
+            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Description
+            </span>
+            <div className="flex">
+              <input
+                type="text"
+                value={description}
+                onChange={(e) => onDescriptionChange(e.target.value)}
+                className={`${inputClassNameProp} min-w-0 flex-1 rounded-r-none border-r-0`}
+              />
+              <button
+                type="button"
+                onClick={handleDescriptionLookup}
+                className={adjoinedButtonClassName}
+              >
+                &gt;&gt;
+              </button>
+            </div>
+          </label>
+        ) : null}
 
         {afterDescription}
       </div>

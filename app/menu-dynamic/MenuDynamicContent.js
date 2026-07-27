@@ -50,7 +50,7 @@ export function MenuDynamicContent() {
       ) : loading ? (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading menu…</p>
       ) : (
-        <MenuTree tree={menuTree} />
+        <MenuTree tree={menuTree} defaultCollapsedIds={["administration"]} />
       )}
     </div>
   );
