@@ -1,6 +1,7 @@
 "use client";
 
 import { StockItemLookupFields } from "@/components/StockItemLookupFields";
+import { toDateTimePayloadValue, toStoredDateTimeValue } from "@/lib/dateTimePayload";
 import {
   getSessionUser,
   isFetchFailure,
@@ -46,6 +47,15 @@ function todayIsoDate() {
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function tomorrowIsoDate() {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
@@ -557,7 +567,9 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
   const [qtyDelivered, setQtyDelivered] = useState("");
   const [orderItemId, setOrderItemId] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
-  const [bookingDate, setBookingDate] = useState(todayIsoDate);
+  const [bookingDate, setBookingDate] = useState(() =>
+    isOrdersOut ? todayIsoDate() : toDateTimePayloadValue(todayIsoDate())
+  );
   const [expiryDate, setExpiryDate] = useState("");
   const [bookingOutTypeId, setBookingOutTypeId] = useState("");
   const [bookingOutTypeOptions, setBookingOutTypeOptions] = useState([]);
@@ -597,7 +609,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
   const [filterFromDate, setFilterFromDate] = useState(
     threeMonthsBeforeTodayIsoDate
   );
-  const [filterToDate, setFilterToDate] = useState(todayIsoDate);
+  const [filterToDate, setFilterToDate] = useState(tomorrowIsoDate);
   const [searchFilterStockCode, setSearchFilterStockCode] = useState("");
   const [searchStockCodeId, setSearchStockCodeId] = useState("");
   const [selectedId, setSelectedId] = useState(null);
@@ -870,9 +882,9 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
   }, []);
 
   useEffect(() => {
-    if (!isOrdersOut || editMode || !actionUser) return;
+    if (editMode || !actionUser) return;
     setRecordActionUser(actionUser);
-  }, [isOrdersOut, editMode, actionUser]);
+  }, [editMode, actionUser]);
 
   useEffect(() => {
     if (isOrdersOut) {
@@ -984,7 +996,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     setFormCustomerId(
       row.customer_id != null ? String(row.customer_id) : ""
     );
-    setBookingDate(toIsoDate(row.date_placed));
+    setBookingDate(toStoredDateTimeValue(row.date_placed));
     setExpiryDate(
       row.expiry_date
         ? toIsoDate(row.expiry_date)
@@ -1211,7 +1223,9 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     setQtyDelivered("");
     setOrderItemId("");
     setUnitPrice("");
-    setBookingDate(todayIsoDate());
+    setBookingDate(
+      isOrdersOut ? todayIsoDate() : toDateTimePayloadValue(todayIsoDate())
+    );
     setExpiryDate("");
     setBookingOutTypeId("");
     setFormCustomerId("");
@@ -1222,7 +1236,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
     setSelectedId(null);
     setOrderBookingOutRows([]);
     setSelectedOrderItemId(null);
-    setRecordActionUser(isOrdersOut ? actionUser : "");
+    setRecordActionUser(actionUser);
     setItemsExpanded(false);
     setOrderItemEditMode(false);
     clearOrdersNotFullyDeliveredSelection();
@@ -1722,7 +1736,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
       row.customer_id != null ? String(row.customer_id) : ""
     );
     setUnitPrice(formatUnitPrice(row.unit_price));
-    setBookingDate(toIsoDate(row.booked_out_date));
+    setBookingDate(toStoredDateTimeValue(row.booked_out_date));
     setExpiryDate(row.expiry_date ? toIsoDate(row.expiry_date) : "");
     setBookingOutTypeId(
       row.booking_out_type_id != null ? String(row.booking_out_type_id) : ""
@@ -2112,8 +2126,10 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                 </span>
                 <input
                   type="date"
-                  value={bookingDate}
-                  onChange={(e) => setBookingDate(e.target.value)}
+                  value={toIsoDate(bookingDate)}
+                  onChange={(e) =>
+                    setBookingDate(toDateTimePayloadValue(e.target.value))
+                  }
                   className={bookingOutInputClassName}
                 />
               </label>

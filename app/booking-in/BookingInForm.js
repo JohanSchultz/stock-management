@@ -1,6 +1,7 @@
 "use client";
 
 import { StockItemLookupFields } from "@/components/StockItemLookupFields";
+import { toDateTimePayloadValue, toStoredDateTimeValue } from "@/lib/dateTimePayload";
 import {
   getSessionUser,
   isFetchFailure,
@@ -48,6 +49,15 @@ function todayIsoDate() {
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function tomorrowIsoDate() {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
@@ -460,7 +470,9 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
   const [orderNumber, setOrderNumber] = useState("");
   const [orderItemId, setOrderItemId] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
-  const [bookingDate, setBookingDate] = useState(todayIsoDate);
+  const [bookingDate, setBookingDate] = useState(() =>
+    toDateTimePayloadValue(todayIsoDate())
+  );
   const [expiryDate, setExpiryDate] = useState("");
   const [bookingInTypeId, setBookingInTypeId] = useState("");
   const [bookingInTypeOptions, setBookingInTypeOptions] = useState([]);
@@ -484,7 +496,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
   const [filterFromDate, setFilterFromDate] = useState(
     threeMonthsBeforeTodayIsoDate
   );
-  const [filterToDate, setFilterToDate] = useState(todayIsoDate);
+  const [filterToDate, setFilterToDate] = useState(tomorrowIsoDate);
   const [searchFilterStockCode, setSearchFilterStockCode] = useState("");
   const [searchStockCodeId, setSearchStockCodeId] = useState("");
   const [selectedId, setSelectedId] = useState(null);
@@ -591,7 +603,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     setFormSupplierId(
       row.supplier_id != null ? String(row.supplier_id) : ""
     );
-    setBookingDate(toIsoDate(row.date_placed));
+    setBookingDate(toStoredDateTimeValue(row.date_placed));
     setExpiryDate(row.expiry_date ? toIsoDate(row.expiry_date) : "");
     setRecordActionUser(row.action_user ?? "");
     setQuantity(row.qty_on_hand != null ? String(row.qty_on_hand) : "");
@@ -948,9 +960,9 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
   }, []);
 
   useEffect(() => {
-    if (!isOrdersIn || editMode || !actionUser) return;
+    if (editMode || !actionUser) return;
     setRecordActionUser(actionUser);
-  }, [isOrdersIn, editMode, actionUser]);
+  }, [editMode, actionUser]);
 
   useEffect(() => {
     if (!isOrdersIn) {
@@ -1111,7 +1123,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     setOrderNumber("");
     setOrderItemId("");
     setUnitPrice("");
-    setBookingDate(todayIsoDate());
+    setBookingDate(toDateTimePayloadValue(todayIsoDate()));
     setExpiryDate("");
     setBookingInTypeId("");
     setReturnReasonId("");
@@ -1126,7 +1138,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     setOrderItemEditMode(false);
     clearOrdersNotFullyBookedInSelection();
     setSelectedGridBookedInType("");
-    setRecordActionUser(isOrdersIn ? actionUser : "");
+    setRecordActionUser(actionUser);
     setEditMode(false);
     setDeleteConfirmOpen(false);
     setError("");
@@ -1593,7 +1605,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
           ? String(row.order_in_id)
           : ""
     );
-    setBookingDate(toIsoDate(row.booked_in_date));
+    setBookingDate(toStoredDateTimeValue(row.booked_in_date));
     setExpiryDate(row.expiry_date ? toIsoDate(row.expiry_date) : "");
     setBookingInTypeId(
       row.booking_in_type_id != null ? String(row.booking_in_type_id) : ""
@@ -2251,8 +2263,10 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                 </span>
                 <input
                   type="date"
-                  value={bookingDate}
-                  onChange={(e) => setBookingDate(e.target.value)}
+                  value={toIsoDate(bookingDate)}
+                  onChange={(e) =>
+                    setBookingDate(toDateTimePayloadValue(e.target.value))
+                  }
                   className={bookingInInputClassName}
                 />
               </label>

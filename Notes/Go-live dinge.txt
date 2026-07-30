@@ -5,6 +5,8 @@
 *5. "Order" moenie as Booking In Type gekies kan word op booking-in nie. En Quarentine maak nie sin nie.
 *6. Order status "Order Placed" op orders-in vorm
 7. 2 aksies om iets uit te boek
+8. actionuser word nie altyd gestoor nie - in elk geval by book-out
+9. Sorteer tyd-sone uit.
 
 
 
