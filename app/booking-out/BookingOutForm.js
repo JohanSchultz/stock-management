@@ -224,7 +224,14 @@ function showsReturnReason(bookingOutTypeLabel) {
   return label === "Returned" || label === "Credit";
 }
 
-const BOOKING_OUT_GRID_COLUMN_COUNT = 8;
+function formatGridOrderNumber(value) {
+  if (value == null || value === "") return "";
+  const parsed = Number.parseInt(String(value), 10);
+  if (!Number.isNaN(parsed) && parsed === 0) return "";
+  return String(value);
+}
+
+const BOOKING_OUT_GRID_COLUMN_COUNT = 9;
 
 const ORDER_BOOKING_OUT_VISIBLE_COLUMNS = [
   "stock_code",
@@ -236,6 +243,7 @@ const ORDER_BOOKING_OUT_VISIBLE_COLUMNS = [
 function formatBookingOutColumnHeader(key) {
   const normalized = key.trim().toLowerCase();
   if (normalized === "id") return "No.";
+  if (normalized === "orders_out_id") return "Order Number";
   if (normalized === "qty") return "Qty Booked Out";
   if (normalized === "booked_out_date") return "Date";
   if (normalized === "has_corrections") return "History";
@@ -1157,7 +1165,6 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
 
   const bookingOutHighlightActive =
     !isOrdersOut && ordersNotFullyDeliveredSelected;
-  const showOrderNumber = ordersNotFullyDeliveredSelected;
   const showQtyToBookOut = !isOrdersOut && editMode;
   const showQtyReserved = !isOrdersOut;
   const qtyReservedRequired = !isOrdersOut && !editMode;
@@ -1808,11 +1815,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
 
       <form className="flex flex-col gap-4">
         {!isOrdersOut ? (
-          <div
-            className={`grid grid-cols-1 gap-4 sm:max-w-2xl ${
-              showOrderNumber ? "sm:grid-cols-2" : ""
-            }`}
-          >
+          <div className="grid grid-cols-1 gap-4 sm:max-w-md sm:grid-cols-[8rem_minmax(0,1fr)]">
             <label className="flex flex-col gap-1">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 {numberFieldLabel}
@@ -1826,21 +1829,19 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                 className={`${bookingOutReadOnlyInputClassName} w-full`}
               />
             </label>
-            {showOrderNumber ? (
-              <label className="flex flex-col gap-1">
-                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                  Order Number
-                </span>
-                <input
-                  type="text"
-                  name="order_out_id"
-                  value={orderNumber}
-                  readOnly
-                  tabIndex={-1}
-                  className={`${bookingOutReadOnlyInputClassName} w-full`}
-                />
-              </label>
-            ) : null}
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Order Number
+              </span>
+              <input
+                type="text"
+                name="order_out_id"
+                value={orderNumber}
+                readOnly
+                tabIndex={-1}
+                className={`${bookingOutReadOnlyInputClassName} w-full`}
+              />
+            </label>
           </div>
         ) : (
           <label className="flex flex-col gap-1">
@@ -2659,6 +2660,9 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                   No.
                 </th>
                 <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  Order Number
+                </th>
+                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
                   Stock Code
                 </th>
                 <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
@@ -2753,6 +2757,9 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
                 >
                   <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
                     {row.id ?? ""}
+                  </td>
+                  <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                    {formatGridOrderNumber(row.orders_out_id)}
                   </td>
                   <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
                     {row.stock_code ?? ""}

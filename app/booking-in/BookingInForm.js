@@ -381,6 +381,7 @@ function formatGridColumnHeader(key) {
     return "Total Price";
   }
   if (normalized === "id") return "No.";
+  if (normalized === "orders_in_id") return "Order Number";
   if (normalized === "qty") return "Qty Booked In";
   if (normalized === "booked_in_date") return "Date";
   if (normalized === "has_corrections") return "History";
@@ -390,7 +391,14 @@ function formatGridColumnHeader(key) {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-const BOOKING_IN_GRID_COLUMN_COUNT = 8;
+function formatGridOrderNumber(value) {
+  if (value == null || value === "") return "";
+  const parsed = Number.parseInt(String(value), 10);
+  if (!Number.isNaN(parsed) && parsed === 0) return "";
+  return String(value);
+}
+
+const BOOKING_IN_GRID_COLUMN_COUNT = 9;
 
 function formatBookingInGridCellValue(value, column, row = null) {
   if (column.trim().toLowerCase() === "has_corrections") {
@@ -1032,7 +1040,6 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
     editMode &&
     !ordersNotFullyBookedInSelected &&
     selectedGridBookedInType.trim() === "Order";
-  const showOrderNumber = ordersNotFullyBookedInSelected;
   const showQtyOnOrder =
     ordersNotFullyBookedInSelected || isMainGridOrderBookingInSelected;
 
@@ -1687,11 +1694,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
 
       <form className="flex flex-col gap-4">
         {!isOrdersIn ? (
-          <div
-            className={`grid grid-cols-1 gap-4 sm:max-w-2xl ${
-              showOrderNumber ? "sm:grid-cols-2" : ""
-            }`}
-          >
+          <div className="grid grid-cols-1 gap-4 sm:max-w-md sm:grid-cols-[8rem_minmax(0,1fr)]">
             <label className="flex flex-col gap-1">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 {numberFieldLabel}
@@ -1705,21 +1708,19 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                 className={`${bookingInReadOnlyInputClassName} w-full`}
               />
             </label>
-            {showOrderNumber ? (
-              <label className="flex flex-col gap-1">
-                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                  Order Number
-                </span>
-                <input
-                  type="text"
-                  name="order_in_id"
-                  value={orderNumber}
-                  readOnly
-                  tabIndex={-1}
-                  className={`${bookingInReadOnlyInputClassName} w-full`}
-                />
-              </label>
-            ) : null}
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Order Number
+              </span>
+              <input
+                type="text"
+                name="order_in_id"
+                value={orderNumber}
+                readOnly
+                tabIndex={-1}
+                className={`${bookingInReadOnlyInputClassName} w-full`}
+              />
+            </label>
           </div>
         ) : (
           <label className="flex flex-col gap-1">
@@ -2624,6 +2625,9 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                   No.
                 </th>
                 <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  Order Number
+                </th>
+                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
                   Stock Code
                 </th>
                 <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
@@ -2714,6 +2718,9 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                 >
                   <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
                     {row.id ?? ""}
+                  </td>
+                  <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                    {formatGridOrderNumber(row.orders_in_id)}
                   </td>
                   <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
                     {row.stock_code ?? ""}
