@@ -16,6 +16,12 @@ function normalizeCustomers(data) {
     ...row,
     id: row.id ?? row.customer_id ?? null,
     descr: row.descr ?? "",
+    address_1: row.address_1 ?? row.address1 ?? "",
+    address_2: row.address_2 ?? row.address2 ?? "",
+    address_3: row.address_3 ?? row.address3 ?? "",
+    postal_code: row.postal_code ?? row.postalcode ?? "",
+    vat_registration_number:
+      row.vat_registration_number ?? row.vat_reg_no ?? row.vatregno ?? "",
     is_active: row.is_active,
     rowKey:
       row.id != null
@@ -24,8 +30,16 @@ function normalizeCustomers(data) {
   }));
 }
 
+const inputClassName =
+  "rounded border border-zinc-300 bg-white px-3 py-2 text-zinc-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200";
+
 export function CustomerForm() {
   const [customer, setCustomer] = useState("");
+  const [address1, setAddress1] = useState("");
+  const [address2, setAddress2] = useState("");
+  const [address3, setAddress3] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [vatRegistrationNumber, setVatRegistrationNumber] = useState("");
   const [active, setActive] = useState(true);
   const [customerId, setCustomerId] = useState("");
   const [customers, setCustomers] = useState([]);
@@ -56,6 +70,11 @@ export function CustomerForm() {
 
   function initializeForm() {
     setCustomer("");
+    setAddress1("");
+    setAddress2("");
+    setAddress3("");
+    setPostalCode("");
+    setVatRegistrationNumber("");
     setActive(true);
     setCustomerId("");
     setSelectedId(null);
@@ -82,6 +101,11 @@ export function CustomerForm() {
       const supabase = createClient();
       const { error: rpcError } = await supabase.rpc("pi_customer", {
         p_customer: customerName,
+        p_address1: address1,
+        p_address2: address2,
+        p_address3: address3,
+        p_postalcode: postalCode,
+        p_vatregno: vatRegistrationNumber,
       });
 
       if (rpcError) throw rpcError;
@@ -98,6 +122,11 @@ export function CustomerForm() {
 
   function handleRowClick(row) {
     setCustomer(row.descr ?? "");
+    setAddress1(row.address_1 ?? "");
+    setAddress2(row.address_2 ?? "");
+    setAddress3(row.address_3 ?? "");
+    setPostalCode(row.postal_code ?? "");
+    setVatRegistrationNumber(row.vat_registration_number ?? "");
     setActive(
       row.is_active === true ||
         row.is_active === "true" ||
@@ -130,6 +159,11 @@ export function CustomerForm() {
         p_id: id,
         p_customer: customerName,
         p_is_active: active,
+        p_address1: address1,
+        p_address2: address2,
+        p_address3: address3,
+        p_postalcode: postalCode,
+        p_vatregno: vatRegistrationNumber,
       });
 
       if (rpcError) throw rpcError;
@@ -177,17 +211,79 @@ export function CustomerForm() {
         className="hidden"
       />
 
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          Customer
-        </span>
-        <input
-          type="text"
-          value={customer}
-          onChange={(e) => setCustomer(e.target.value)}
-          className="rounded border border-zinc-300 bg-white px-3 py-2 text-zinc-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200"
-        />
-      </label>
+      <div className="flex flex-col gap-4">
+        <label className="flex flex-col gap-1">
+          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            Customer
+          </span>
+          <input
+            type="text"
+            value={customer}
+            onChange={(e) => setCustomer(e.target.value)}
+            className={inputClassName}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            Address 1
+          </span>
+          <input
+            type="text"
+            value={address1}
+            onChange={(e) => setAddress1(e.target.value)}
+            className={inputClassName}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            Address 2
+          </span>
+          <input
+            type="text"
+            value={address2}
+            onChange={(e) => setAddress2(e.target.value)}
+            className={inputClassName}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            Address 3
+          </span>
+          <input
+            type="text"
+            value={address3}
+            onChange={(e) => setAddress3(e.target.value)}
+            className={inputClassName}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            Postal Code
+          </span>
+          <input
+            type="text"
+            value={postalCode}
+            onChange={(e) => setPostalCode(e.target.value)}
+            className={inputClassName}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            VAT Registration Number
+          </span>
+          <input
+            type="text"
+            value={vatRegistrationNumber}
+            onChange={(e) => setVatRegistrationNumber(e.target.value)}
+            className={inputClassName}
+          />
+        </label>
+      </div>
 
       <div className="mt-4 flex items-center gap-3">
         <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
