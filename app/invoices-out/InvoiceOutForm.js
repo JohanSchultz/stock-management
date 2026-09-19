@@ -608,7 +608,7 @@ export function InvoiceOutForm() {
 
         const { error: lineError } = await supabase.rpc("pi_invoice_out_line", {
           p_invoice_header_id: newInvoiceHeaderId,
-          p_order_out_id: orderOutId,
+          p_booking_out_id: orderOutId,
           p_stock_item_id: stockItemId,
           p_unit_price: unitPrice,
           p_qty: qty,
