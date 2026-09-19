@@ -347,7 +347,7 @@ export function InvoiceOutForm() {
 
       const { data, error: rpcError } = await supabase.rpc(
         "pr_invoice_allordered_all_products",
-        { p_orders_out_id: parsedOrdersOutId }
+        { p_booking_out_id: parsedOrdersOutId }
       );
       if (rpcError) throw rpcError;
 
