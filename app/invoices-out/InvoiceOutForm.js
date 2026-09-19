@@ -5,6 +5,28 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 const SELECT_PLACEHOLDER = " -SELECT- ";
 
+const BOOK_OUT_DATE_COLUMN_KEYS = new Set([
+  "date_placed",
+  "book_out_date",
+  "order_placed_date",
+  "booked_out_date",
+]);
+
+const BOOK_OUT_MONTH_NAMES = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
 const inputClassName =
   "rounded border border-zinc-300 bg-white px-3 py-2 text-zinc-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200";
 
@@ -147,20 +169,35 @@ function getColumnKeys(rows) {
   return keys;
 }
 
-function formatColumnHeader(key, { renameIdAsOrderNumber = false } = {}) {
-  if (
-    renameIdAsOrderNumber &&
-    (key === "id" || key === "booking_out_id")
-  ) {
-    return "Order Number";
+function formatColumnHeader(key, { invoiceBookingsOutGrid = false } = {}) {
+  if (invoiceBookingsOutGrid) {
+    if (key === "id" || key === "booking_out_id") return "Book Out Number";
+    if (BOOK_OUT_DATE_COLUMN_KEYS.has(key)) return "Book Out Date";
   }
   return key.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatBookOutDate(value) {
+  if (value == null || value === "") return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const month = BOOK_OUT_MONTH_NAMES[parsed.getMonth()] ?? "";
+  const year = parsed.getFullYear();
+  return `${day} ${month} ${year}`;
 }
 
 function formatCellValue(value) {
   if (value == null || value === "") return "";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   return String(value);
+}
+
+function formatBookingsOutGridCell(column, value) {
+  if (BOOK_OUT_DATE_COLUMN_KEYS.has(column)) {
+    return formatBookOutDate(value);
+  }
+  return formatCellValue(value);
 }
 
 function parseInteger(value) {
@@ -689,7 +726,7 @@ export function InvoiceOutForm() {
       {showCommentsAndOrders ? (
         <>
       <h2 className="mt-6 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-        Orders
+        Bookings Out
       </h2>
       <div className="mt-2 overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
         <table className="w-full min-w-max text-left text-sm">
@@ -705,7 +742,7 @@ export function InvoiceOutForm() {
                     key={column}
                     className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300"
                   >
-                    {formatColumnHeader(column, { renameIdAsOrderNumber: true })}
+                    {formatColumnHeader(column, { invoiceBookingsOutGrid: true })}
                   </th>
                 ))
               )}
@@ -727,7 +764,7 @@ export function InvoiceOutForm() {
                   colSpan={Math.max(columns.length, 1)}
                   className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
                 >
-                  Select a customer to load orders.
+                  Select a customer to load bookings out.
                 </td>
               </tr>
             ) : invoiceRows.length === 0 ? (
@@ -736,7 +773,7 @@ export function InvoiceOutForm() {
                   colSpan={Math.max(columns.length, 1)}
                   className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
                 >
-                  No orders found.
+                  No bookings out found.
                 </td>
               </tr>
             ) : (
@@ -755,7 +792,7 @@ export function InvoiceOutForm() {
                       key={`${row.rowKey}-${column}`}
                       className="whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200"
                     >
-                      {formatCellValue(row[column])}
+                      {formatBookingsOutGridCell(column, row[column])}
                     </td>
                   ))}
                 </tr>
