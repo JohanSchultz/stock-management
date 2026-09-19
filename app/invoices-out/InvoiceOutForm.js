@@ -62,13 +62,16 @@ function normalizeCustomerOptions(data) {
 function normalizeInvoiceGridRows(data) {
   if (!Array.isArray(data)) return [];
 
-  return data.map((row, index) => ({
-    ...row,
-    rowKey:
-      row.id != null
-        ? `invoice-all-ordered-${row.id}`
-        : `invoice-all-ordered-row-${index}`,
-  }));
+  return data.map((row, index) => {
+    const orderKey = row.booking_out_id ?? row.id;
+    return {
+      ...row,
+      rowKey:
+        orderKey != null
+          ? `invoice-all-ordered-${orderKey}`
+          : `invoice-all-ordered-row-${index}`,
+    };
+  });
 }
 
 function normalizeProductGridRows(data) {
@@ -84,7 +87,7 @@ function normalizeProductGridRows(data) {
 }
 
 function getOrderNumberFromRow(row) {
-  return row.id ?? row.orders_out_id ?? null;
+  return row.booking_out_id ?? row.id ?? null;
 }
 
 function getProductTextFromRow(row) {
@@ -145,7 +148,12 @@ function getColumnKeys(rows) {
 }
 
 function formatColumnHeader(key, { renameIdAsOrderNumber = false } = {}) {
-  if (renameIdAsOrderNumber && key === "id") return "Order Number";
+  if (
+    renameIdAsOrderNumber &&
+    (key === "id" || key === "booking_out_id")
+  ) {
+    return "Order Number";
+  }
   return key.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
