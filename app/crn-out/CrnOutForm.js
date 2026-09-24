@@ -187,10 +187,15 @@ export function CrnOutForm() {
   const [unitPrice, setUnitPrice] = useState("");
   const [otherItem, setOtherItem] = useState("");
   const [otherItemPrice, setOtherItemPrice] = useState("");
+  const [crnLineItems, setCrnLineItems] = useState([]);
   const [error, setError] = useState("");
 
   const showComments = Boolean(revenueAccountId && supplierId);
   const showBookingsInGrid = showComments;
+  const showTopAddButton = String(bookInNo ?? "").trim() !== "";
+  const showBottomAddButton =
+    String(otherItem ?? "").trim() !== "" &&
+    String(otherItemPrice ?? "").trim() !== "";
 
   const bookingInColumns = useMemo(
     () => getColumnKeys(bookingInRows),
@@ -219,6 +224,7 @@ export function CrnOutForm() {
     const parsedSupplierId = parseInteger(selectedSupplierId);
     if (!selectedSupplierId || parsedSupplierId == null) {
       setBookingInRows([]);
+      setCrnLineItems([]);
       clearBookingInDetailFields({
         setSelectedBookingInRowKey,
         setBookInNo,
@@ -229,6 +235,7 @@ export function CrnOutForm() {
       return;
     }
 
+    setCrnLineItems([]);
     clearBookingInDetailFields({
       setSelectedBookingInRowKey,
       setBookInNo,
@@ -275,6 +282,7 @@ export function CrnOutForm() {
     if (!nextSupplierId) {
       setComments("");
       setBookingInRows([]);
+      setCrnLineItems([]);
       clearBookingInDetailFields({
         setSelectedBookingInRowKey,
         setBookInNo,
@@ -291,6 +299,56 @@ export function CrnOutForm() {
     setProduct(getProductTextFromRow(row));
     setQty(getQtyFromRow(row));
     setUnitPrice(formatGridQtyOrUnitPrice(getUnitPriceFromRow(row)));
+    setError("");
+  }
+
+  function handleAddBookingInLine() {
+    const normalizedBookInNo = String(bookInNo ?? "").trim();
+    if (!normalizedBookInNo) return;
+
+    setCrnLineItems((current) => [
+      ...current,
+      {
+        rowKey: `crn-line-${current.length}-${Date.now()}`,
+        book_in_no: normalizedBookInNo,
+        description: product,
+        qty,
+        unit_price: unitPrice,
+      },
+    ]);
+
+    clearBookingInDetailFields({
+      setSelectedBookingInRowKey,
+      setBookInNo,
+      setProduct,
+      setQty,
+      setUnitPrice,
+    });
+    setError("");
+  }
+
+  function handleRemoveCrnLine(rowKey) {
+    setCrnLineItems((current) => current.filter((row) => row.rowKey !== rowKey));
+  }
+
+  function handleAddOtherItemLine() {
+    const description = String(otherItem ?? "").trim();
+    const priceValue = String(otherItemPrice ?? "").trim();
+    if (!description || !priceValue) return;
+
+    setCrnLineItems((current) => [
+      ...current,
+      {
+        rowKey: `crn-line-${current.length}-${Date.now()}`,
+        book_in_no: "",
+        description,
+        qty: "",
+        unit_price: formatGridQtyOrUnitPrice(priceValue),
+      },
+    ]);
+
+    setOtherItem("");
+    setOtherItemPrice("");
     setError("");
   }
 
@@ -475,9 +533,15 @@ export function CrnOutForm() {
                 className={`${readOnlyInputClassName} w-full`}
               />
             </label>
-            <button type="button" className={addButtonClassName}>
-              Add
-            </button>
+            {showTopAddButton ? (
+              <button
+                type="button"
+                onClick={handleAddBookingInLine}
+                className={addButtonClassName}
+              >
+                Add
+              </button>
+            ) : null}
           </div>
 
           <div className="mt-3 flex max-w-5xl flex-wrap items-end gap-3">
@@ -508,9 +572,83 @@ export function CrnOutForm() {
                 className={`${inputClassName} w-full`}
               />
             </label>
-            <button type="button" className={addButtonClassName}>
-              Add
-            </button>
+            {showBottomAddButton ? (
+              <button
+                type="button"
+                onClick={handleAddOtherItemLine}
+                className={addButtonClassName}
+              >
+                Add
+              </button>
+            ) : null}
+          </div>
+
+          <h2 className="mt-6 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            Items
+          </h2>
+          <div className="mt-2 overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+            <table className="w-full min-w-max text-left text-sm">
+              <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
+                <tr>
+                  <th className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                    Book In No.
+                  </th>
+                  <th className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                    Description
+                  </th>
+                  <th className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                    Qty
+                  </th>
+                  <th className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                    (Unit) Price
+                  </th>
+                  <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                    &nbsp;
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {crnLineItems.length === 0 ? (
+                  <tr key="crn-items-empty">
+                    <td
+                      colSpan={5}
+                      className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
+                    >
+                      No items added yet.
+                    </td>
+                  </tr>
+                ) : (
+                  crnLineItems.map((row) => (
+                    <tr
+                      key={row.rowKey}
+                      className="border-b border-zinc-100 last:border-b-0 dark:border-zinc-800"
+                    >
+                      <td className="whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                        {row.book_in_no}
+                      </td>
+                      <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                        {row.description}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                        {formatGridQtyOrUnitPrice(row.qty)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                        {row.unit_price}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCrnLine(row.rowKey)}
+                          className="rounded bg-red-200 px-3 py-1 text-sm font-medium text-red-900 hover:bg-red-300 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60"
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </>
       ) : null}
