@@ -38,6 +38,9 @@ const inputClassName =
 const readOnlyInputClassName =
   "rounded border border-zinc-300 bg-zinc-50 px-3 py-2 text-zinc-800 read-only:cursor-default dark:border-zinc-600 dark:bg-zinc-900/50 dark:text-zinc-200";
 
+const addButtonClassName =
+  "shrink-0 rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500";
+
 function normalizeRevenueAccountOptions(data) {
   if (!Array.isArray(data)) return [];
 
@@ -182,6 +185,8 @@ export function CrnOutForm() {
   const [product, setProduct] = useState("");
   const [qty, setQty] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
+  const [otherItem, setOtherItem] = useState("");
+  const [otherItemPrice, setOtherItemPrice] = useState("");
   const [error, setError] = useState("");
 
   const showComments = Boolean(revenueAccountId && supplierId);
@@ -470,6 +475,42 @@ export function CrnOutForm() {
                 className={`${readOnlyInputClassName} w-full`}
               />
             </label>
+            <button type="button" className={addButtonClassName}>
+              Add
+            </button>
+          </div>
+
+          <div className="mt-3 flex max-w-5xl flex-wrap items-end gap-3">
+            <label className="flex min-w-[12rem] flex-1 flex-col gap-1 sm:max-w-2xl">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Other item
+              </span>
+              <input
+                type="text"
+                name="other_item"
+                value={otherItem}
+                onChange={(e) => setOtherItem(e.target.value)}
+                className={`${inputClassName} w-full`}
+              />
+            </label>
+            <label className="flex w-28 shrink-0 flex-col gap-1 sm:w-32">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Price
+              </span>
+              <input
+                type="number"
+                name="other_item_price"
+                step="any"
+                inputMode="decimal"
+                min={0}
+                value={otherItemPrice}
+                onChange={(e) => setOtherItemPrice(e.target.value)}
+                className={`${inputClassName} w-full`}
+              />
+            </label>
+            <button type="button" className={addButtonClassName}>
+              Add
+            </button>
           </div>
         </>
       ) : null}
