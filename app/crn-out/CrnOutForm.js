@@ -1,6 +1,10 @@
 "use client";
 
 import { SupplierSelect } from "@/components/SupplierSelect";
+import {
+  formatGridQtyOrUnitPrice,
+  isQtyOrUnitPriceColumnKey,
+} from "@/lib/format/gridNumberFormat";
 import { prepareSupabaseClient } from "@/lib/supabase/useSupabaseIdleRecovery";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -30,6 +34,9 @@ const BOOK_IN_MONTH_NAMES = [
 
 const inputClassName =
   "rounded border border-zinc-300 bg-white px-3 py-2 text-zinc-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200";
+
+const readOnlyInputClassName =
+  "rounded border border-zinc-300 bg-zinc-50 px-3 py-2 text-zinc-800 read-only:cursor-default dark:border-zinc-600 dark:bg-zinc-900/50 dark:text-zinc-200";
 
 function normalizeRevenueAccountOptions(data) {
   if (!Array.isArray(data)) return [];
@@ -115,6 +122,9 @@ function formatBookingsInGridCell(column, value) {
   if (BOOK_IN_DATE_COLUMN_KEYS.has(column)) {
     return formatBookInDate(value);
   }
+  if (isQtyOrUnitPriceColumnKey(column)) {
+    return formatGridQtyOrUnitPrice(value);
+  }
   return formatCellValue(value);
 }
 
@@ -122,6 +132,41 @@ function parseInteger(value) {
   if (value == null || value === "") return null;
   const parsed = Number.parseInt(String(value), 10);
   return Number.isNaN(parsed) ? null : parsed;
+}
+
+function getBookInNumberFromRow(row) {
+  const value = row.booking_in_id ?? row.id;
+  if (value == null || value === "") return "";
+  return String(value);
+}
+
+function getProductTextFromRow(row) {
+  if (row.item != null && row.item !== "") return String(row.item);
+  if (row.product != null && row.product !== "") return String(row.product);
+  const stockCode = row.stock_code ?? row.stockCode ?? "";
+  const descr = row.descr ?? row.description ?? "";
+  if (stockCode && descr) return `${stockCode} - ${descr}`;
+  return String(stockCode || descr || "");
+}
+
+function getQtyFromRow(row) {
+  const qty = row.qty ?? row.quantity ?? row.Qty;
+  if (qty == null || qty === "") return "";
+  return String(qty);
+}
+
+function getUnitPriceFromRow(row) {
+  const unitPrice = row.unit_price ?? row.unitPrice;
+  if (unitPrice == null || unitPrice === "") return "";
+  return String(unitPrice);
+}
+
+function clearBookingInDetailFields(setters) {
+  setters.setSelectedBookingInRowKey(null);
+  setters.setBookInNo("");
+  setters.setProduct("");
+  setters.setQty("");
+  setters.setUnitPrice("");
 }
 
 export function CrnOutForm() {
@@ -132,6 +177,11 @@ export function CrnOutForm() {
   const [bookingInRows, setBookingInRows] = useState([]);
   const [bookingsInGridLoading, setBookingsInGridLoading] = useState(false);
   const [comments, setComments] = useState("");
+  const [selectedBookingInRowKey, setSelectedBookingInRowKey] = useState(null);
+  const [bookInNo, setBookInNo] = useState("");
+  const [product, setProduct] = useState("");
+  const [qty, setQty] = useState("");
+  const [unitPrice, setUnitPrice] = useState("");
   const [error, setError] = useState("");
 
   const showComments = Boolean(revenueAccountId && supplierId);
@@ -164,9 +214,23 @@ export function CrnOutForm() {
     const parsedSupplierId = parseInteger(selectedSupplierId);
     if (!selectedSupplierId || parsedSupplierId == null) {
       setBookingInRows([]);
+      clearBookingInDetailFields({
+        setSelectedBookingInRowKey,
+        setBookInNo,
+        setProduct,
+        setQty,
+        setUnitPrice,
+      });
       return;
     }
 
+    clearBookingInDetailFields({
+      setSelectedBookingInRowKey,
+      setBookInNo,
+      setProduct,
+      setQty,
+      setUnitPrice,
+    });
     setBookingsInGridLoading(true);
 
     try {
@@ -206,7 +270,23 @@ export function CrnOutForm() {
     if (!nextSupplierId) {
       setComments("");
       setBookingInRows([]);
+      clearBookingInDetailFields({
+        setSelectedBookingInRowKey,
+        setBookInNo,
+        setProduct,
+        setQty,
+        setUnitPrice,
+      });
     }
+  }
+
+  function handleBookingInRowClick(row) {
+    setSelectedBookingInRowKey(row.rowKey);
+    setBookInNo(getBookInNumberFromRow(row));
+    setProduct(getProductTextFromRow(row));
+    setQty(getQtyFromRow(row));
+    setUnitPrice(formatGridQtyOrUnitPrice(getUnitPriceFromRow(row)));
+    setError("");
   }
 
   return (
@@ -313,7 +393,12 @@ export function CrnOutForm() {
                   bookingInRows.map((row) => (
                     <tr
                       key={row.rowKey}
-                      className="border-b border-zinc-100 last:border-b-0 dark:border-zinc-800"
+                      onClick={() => handleBookingInRowClick(row)}
+                      className={`cursor-pointer border-b border-zinc-100 last:border-b-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/50 ${
+                        selectedBookingInRowKey === row.rowKey
+                          ? "bg-sky-50 dark:bg-sky-900/20"
+                          : ""
+                      }`}
                     >
                       {bookingInColumns.map((column) => (
                         <td
@@ -328,6 +413,63 @@ export function CrnOutForm() {
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div className="mt-4 flex max-w-5xl flex-wrap items-end gap-3">
+            <label className="flex w-28 shrink-0 flex-col gap-1">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Book In No.
+              </span>
+              <input
+                type="text"
+                name="book_in_no"
+                value={bookInNo}
+                readOnly
+                tabIndex={-1}
+                className={`${readOnlyInputClassName} w-full`}
+              />
+            </label>
+            <label className="flex min-w-[10rem] flex-1 flex-col gap-1 sm:max-w-md">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Product
+              </span>
+              <input
+                type="text"
+                name="product"
+                value={product}
+                readOnly
+                tabIndex={-1}
+                className={`${readOnlyInputClassName} w-full`}
+              />
+            </label>
+            <label className="flex w-24 shrink-0 flex-col gap-1 sm:w-28">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Qty
+              </span>
+              <input
+                type="number"
+                name="qty"
+                step="any"
+                inputMode="decimal"
+                min={0}
+                value={qty}
+                onChange={(e) => setQty(e.target.value)}
+                className={`${inputClassName} w-full`}
+              />
+            </label>
+            <label className="flex w-28 shrink-0 flex-col gap-1 sm:w-32">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Unit Price
+              </span>
+              <input
+                type="text"
+                name="unit_price"
+                value={unitPrice}
+                readOnly
+                tabIndex={-1}
+                className={`${readOnlyInputClassName} w-full`}
+              />
+            </label>
           </div>
         </>
       ) : null}

@@ -1,6 +1,10 @@
 "use client";
 
 import { CustomerSelect } from "@/components/CustomerSelect";
+import {
+  formatGridQtyOrUnitPrice,
+  isQtyOrUnitPriceColumnKey,
+} from "@/lib/format/gridNumberFormat";
 import { prepareSupabaseClient } from "@/lib/supabase/useSupabaseIdleRecovery";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -173,6 +177,16 @@ function formatCellValue(value) {
 function formatBookingsOutGridCell(column, value) {
   if (BOOK_OUT_DATE_COLUMN_KEYS.has(column)) {
     return formatBookOutDate(value);
+  }
+  if (isQtyOrUnitPriceColumnKey(column)) {
+    return formatGridQtyOrUnitPrice(value);
+  }
+  return formatCellValue(value);
+}
+
+function formatProductOrLineGridCell(column, value) {
+  if (isQtyOrUnitPriceColumnKey(column)) {
+    return formatGridQtyOrUnitPrice(value);
   }
   return formatCellValue(value);
 }
@@ -823,7 +837,7 @@ export function InvoiceOutForm() {
                       key={`${row.rowKey}-${column}`}
                       className="whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200"
                     >
-                      {formatCellValue(row[column])}
+                      {formatProductOrLineGridCell(column, row[column])}
                     </td>
                   ))}
                 </tr>
@@ -937,7 +951,7 @@ export function InvoiceOutForm() {
                         column.hidden ? "hidden" : ""
                       }`}
                     >
-                      {formatCellValue(row[column.key])}
+                      {formatProductOrLineGridCell(column.key, row[column.key])}
                     </td>
                   ))}
                   <td className="whitespace-nowrap px-4 py-2">
