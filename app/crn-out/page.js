@@ -1,11 +1,10 @@
 import { AppShell } from "@/components/AppShell";
+import { CrnOutForm } from "./CrnOutForm";
 
 export default function CrnOutPage() {
   return (
     <AppShell title="Credit Notes Out">
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Credit notes out — content coming soon.
-      </p>
+      <CrnOutForm />
     </AppShell>
   );
 }

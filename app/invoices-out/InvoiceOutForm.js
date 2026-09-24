@@ -1,5 +1,6 @@
 "use client";
 
+import { CustomerSelect } from "@/components/CustomerSelect";
 import { prepareSupabaseClient } from "@/lib/supabase/useSupabaseIdleRecovery";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -30,17 +31,6 @@ const BOOK_OUT_MONTH_NAMES = [
 const inputClassName =
   "rounded border border-zinc-300 bg-white px-3 py-2 text-zinc-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200";
 
-function optionLabel(option) {
-  return (
-    option.descr ?? option.customer ?? option.description ?? option.name ?? ""
-  );
-}
-
-function optionValue(option) {
-  const id = option.id ?? option.customer_id;
-  return id != null ? String(id) : "";
-}
-
 function normalizeRevenueAccountOptions(data) {
   if (!Array.isArray(data)) return [];
 
@@ -66,19 +56,6 @@ function revenueAccountOptionLabel(option) {
   return [option.acctNumber, option.acctName, option.finStatement]
     .map((part) => String(part ?? ""))
     .join(" - ");
-}
-
-function normalizeCustomerOptions(data) {
-  if (!Array.isArray(data)) return [];
-
-  return data
-    .map((row, index) => ({
-      id: row.id ?? row.customer_id ?? null,
-      descr: row.descr ?? row.customer ?? row.description ?? row.name ?? "",
-      is_active: row.is_active,
-      optionKey: `customer-option-${index}`,
-    }))
-    .sort((left, right) => optionLabel(left).localeCompare(optionLabel(right)));
 }
 
 function normalizeInvoiceGridRows(data) {
@@ -232,8 +209,6 @@ export function InvoiceOutForm() {
   const [product, setProduct] = useState("");
   const [productId, setProductId] = useState("");
   const [quantity, setQuantity] = useState("");
-  const [customerOptions, setCustomerOptions] = useState([]);
-  const [customersLoading, setCustomersLoading] = useState(false);
   const [error, setError] = useState("");
   const [printSampleLoading, setPrintSampleLoading] = useState(false);
   const [invoiceLineItems, setInvoiceLineItems] = useState([]);
@@ -284,25 +259,6 @@ export function InvoiceOutForm() {
       setError(err.message ?? "Failed to load revenue accounts");
     } finally {
       setRevenueAccountsLoading(false);
-    }
-  }, []);
-
-  const loadCustomers = useCallback(async () => {
-    setCustomersLoading(true);
-    setError("");
-
-    try {
-      const supabase = await prepareSupabaseClient();
-      if (!supabase) return;
-
-      const { data, error: rpcError } = await supabase.rpc("pr_customer_active");
-      if (rpcError) throw rpcError;
-      setCustomerOptions(normalizeCustomerOptions(data));
-    } catch (err) {
-      setError(err.message ?? "Failed to load customers");
-      setCustomerOptions([]);
-    } finally {
-      setCustomersLoading(false);
     }
   }, []);
 
@@ -392,8 +348,7 @@ export function InvoiceOutForm() {
 
   useEffect(() => {
     loadRevenueAccounts();
-    loadCustomers();
-  }, [loadRevenueAccounts, loadCustomers]);
+  }, [loadRevenueAccounts]);
 
   useEffect(() => {
     if (!customerId) {
@@ -675,29 +630,11 @@ export function InvoiceOutForm() {
         </select>
       </label>
 
-      <label className="mt-4 flex w-full max-w-xs flex-col gap-1">
-        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          Customer
-        </span>
-        <select
-          value={customerId}
-          onChange={(e) => handleCustomerChange(e.target.value)}
-          disabled={customersLoading}
-          className={`${inputClassName} w-full`}
-        >
-          <option value="">
-            {customersLoading ? "Loading…" : SELECT_PLACEHOLDER}
-          </option>
-          {customerOptions.map((option, index) => (
-            <option
-              key={option.optionKey ?? `customer-${index}`}
-              value={optionValue(option)}
-            >
-              {optionLabel(option)}
-            </option>
-          ))}
-        </select>
-      </label>
+      <CustomerSelect
+        value={customerId}
+        onChange={handleCustomerChange}
+        onLoadError={(message) => setError(message)}
+      />
 
       {error ? (
         <p
