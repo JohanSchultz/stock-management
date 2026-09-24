@@ -2,9 +2,31 @@
 
 import { SupplierSelect } from "@/components/SupplierSelect";
 import { prepareSupabaseClient } from "@/lib/supabase/useSupabaseIdleRecovery";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 const SELECT_PLACEHOLDER = " -SELECT- ";
+
+const BOOK_IN_DATE_COLUMN_KEYS = new Set([
+  "date_placed",
+  "book_in_date",
+  "order_placed_date",
+  "booked_in_date",
+]);
+
+const BOOK_IN_MONTH_NAMES = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
 const inputClassName =
   "rounded border border-zinc-300 bg-white px-3 py-2 text-zinc-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200";
@@ -36,15 +58,89 @@ function revenueAccountOptionLabel(option) {
     .join(" - ");
 }
 
+function normalizeBookingInRows(data) {
+  if (!Array.isArray(data)) return [];
+
+  return data.map((row, index) => {
+    const bookingKey = row.booking_in_id ?? row.id;
+    return {
+      ...row,
+      rowKey:
+        bookingKey != null
+          ? `crn-booking-in-${bookingKey}`
+          : `crn-booking-in-row-${index}`,
+    };
+  });
+}
+
+function getColumnKeys(rows) {
+  const keys = [];
+  const seen = new Set();
+
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      if (key === "rowKey") continue;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      keys.push(key);
+    }
+  }
+
+  return keys;
+}
+
+function formatColumnHeader(key) {
+  if (key === "id" || key === "booking_in_id") return "Book In Number";
+  if (BOOK_IN_DATE_COLUMN_KEYS.has(key)) return "Book In Date";
+  return key.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatBookInDate(value) {
+  if (value == null || value === "") return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const month = BOOK_IN_MONTH_NAMES[parsed.getMonth()] ?? "";
+  const year = parsed.getFullYear();
+  return `${day} ${month} ${year}`;
+}
+
+function formatCellValue(value) {
+  if (value == null || value === "") return "";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return String(value);
+}
+
+function formatBookingsInGridCell(column, value) {
+  if (BOOK_IN_DATE_COLUMN_KEYS.has(column)) {
+    return formatBookInDate(value);
+  }
+  return formatCellValue(value);
+}
+
+function parseInteger(value) {
+  if (value == null || value === "") return null;
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
 export function CrnOutForm() {
   const [revenueAccountId, setRevenueAccountId] = useState("");
   const [revenueAccountOptions, setRevenueAccountOptions] = useState([]);
   const [revenueAccountsLoading, setRevenueAccountsLoading] = useState(false);
   const [supplierId, setSupplierId] = useState("");
+  const [bookingInRows, setBookingInRows] = useState([]);
+  const [bookingsInGridLoading, setBookingsInGridLoading] = useState(false);
   const [comments, setComments] = useState("");
   const [error, setError] = useState("");
 
   const showComments = Boolean(revenueAccountId && supplierId);
+  const showBookingsInGrid = showComments;
+
+  const bookingInColumns = useMemo(
+    () => getColumnKeys(bookingInRows),
+    [bookingInRows]
+  );
 
   const loadRevenueAccounts = useCallback(async () => {
     setRevenueAccountsLoading(true);
@@ -64,14 +160,53 @@ export function CrnOutForm() {
     }
   }, []);
 
+  const loadBookingsInGrid = useCallback(async (selectedSupplierId) => {
+    const parsedSupplierId = parseInteger(selectedSupplierId);
+    if (!selectedSupplierId || parsedSupplierId == null) {
+      setBookingInRows([]);
+      return;
+    }
+
+    setBookingsInGridLoading(true);
+
+    try {
+      const supabase = await prepareSupabaseClient();
+      if (!supabase) return;
+
+      const { data, error: rpcError } = await supabase.rpc("pr__crn_booking_ins", {
+        p_customer_id: parsedSupplierId,
+      });
+      if (rpcError) throw rpcError;
+
+      setBookingInRows(normalizeBookingInRows(data));
+    } catch (err) {
+      setBookingInRows([]);
+      setError(err.message ?? "Failed to load bookings in");
+    } finally {
+      setBookingsInGridLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadRevenueAccounts();
   }, [loadRevenueAccounts]);
 
+  useEffect(() => {
+    if (!supplierId) {
+      setBookingInRows([]);
+      return;
+    }
+
+    loadBookingsInGrid(supplierId);
+  }, [supplierId, loadBookingsInGrid]);
+
   function handleSupplierChange(nextSupplierId) {
     setSupplierId(nextSupplierId);
     setError("");
-    if (!nextSupplierId) setComments("");
+    if (!nextSupplierId) {
+      setComments("");
+      setBookingInRows([]);
+    }
   }
 
   return (
@@ -128,6 +263,73 @@ export function CrnOutForm() {
             className={`${inputClassName} w-full`}
           />
         </label>
+      ) : null}
+
+      {showBookingsInGrid ? (
+        <>
+          <h2 className="mt-6 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            Bookings In
+          </h2>
+          <div className="mt-2 overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+            <table className="w-full min-w-max text-left text-sm">
+              <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
+                <tr>
+                  {bookingInColumns.length === 0 ? (
+                    <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                      &nbsp;
+                    </th>
+                  ) : (
+                    bookingInColumns.map((column) => (
+                      <th
+                        key={column}
+                        className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300"
+                      >
+                        {formatColumnHeader(column)}
+                      </th>
+                    ))
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {bookingsInGridLoading ? (
+                  <tr key="crn-bookings-in-loading">
+                    <td
+                      colSpan={Math.max(bookingInColumns.length, 1)}
+                      className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
+                    >
+                      Loading…
+                    </td>
+                  </tr>
+                ) : bookingInRows.length === 0 ? (
+                  <tr key="crn-bookings-in-empty">
+                    <td
+                      colSpan={Math.max(bookingInColumns.length, 1)}
+                      className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
+                    >
+                      No bookings in found.
+                    </td>
+                  </tr>
+                ) : (
+                  bookingInRows.map((row) => (
+                    <tr
+                      key={row.rowKey}
+                      className="border-b border-zinc-100 last:border-b-0 dark:border-zinc-800"
+                    >
+                      {bookingInColumns.map((column) => (
+                        <td
+                          key={`${row.rowKey}-${column}`}
+                          className="whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200"
+                        >
+                          {formatBookingsInGridCell(column, row[column])}
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
       ) : null}
     </div>
   );
