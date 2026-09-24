@@ -1,6 +1,6 @@
 "use client";
 
-import { CustomerSelect } from "@/components/CustomerSelect";
+import { SupplierSelect } from "@/components/SupplierSelect";
 import { prepareSupabaseClient } from "@/lib/supabase/useSupabaseIdleRecovery";
 import { useCallback, useEffect, useState } from "react";
 
@@ -40,11 +40,11 @@ export function CrnOutForm() {
   const [revenueAccountId, setRevenueAccountId] = useState("");
   const [revenueAccountOptions, setRevenueAccountOptions] = useState([]);
   const [revenueAccountsLoading, setRevenueAccountsLoading] = useState(false);
-  const [customerId, setCustomerId] = useState("");
+  const [supplierId, setSupplierId] = useState("");
   const [comments, setComments] = useState("");
   const [error, setError] = useState("");
 
-  const showComments = Boolean(revenueAccountId && customerId);
+  const showComments = Boolean(revenueAccountId && supplierId);
 
   const loadRevenueAccounts = useCallback(async () => {
     setRevenueAccountsLoading(true);
@@ -68,10 +68,10 @@ export function CrnOutForm() {
     loadRevenueAccounts();
   }, [loadRevenueAccounts]);
 
-  function handleCustomerChange(nextCustomerId) {
-    setCustomerId(nextCustomerId);
+  function handleSupplierChange(nextSupplierId) {
+    setSupplierId(nextSupplierId);
     setError("");
-    if (!nextCustomerId) setComments("");
+    if (!nextSupplierId) setComments("");
   }
 
   return (
@@ -100,9 +100,9 @@ export function CrnOutForm() {
         </select>
       </label>
 
-      <CustomerSelect
-        value={customerId}
-        onChange={handleCustomerChange}
+      <SupplierSelect
+        value={supplierId}
+        onChange={handleSupplierChange}
         onLoadError={(message) => setError(message)}
       />
 
