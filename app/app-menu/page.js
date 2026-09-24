@@ -1,3 +1,4 @@
+import { MenuDynamicContent } from "@/app/menu-dynamic/MenuDynamicContent";
 import { MenuBackLink } from "@/components/MenuBackLink";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -9,7 +10,12 @@ async function signOut() {
   redirect("/login");
 }
 
-export async function AppShell({ title, children }) {
+export default async function AppMenuPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   return (
     <div className="flex min-h-screen flex-col bg-zinc-50 font-sans dark:bg-zinc-950">
       <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900">
@@ -26,12 +32,15 @@ export async function AppShell({ title, children }) {
         </form>
       </header>
       <main className="p-6">
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto w-full max-w-md">
           <MenuBackLink />
           <h2 className="mt-4 text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-            {title}
+            Menu
           </h2>
-          {children}
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            Signed in as {user?.email ?? "unknown"}
+          </p>
+          <MenuDynamicContent />
         </div>
       </main>
     </div>

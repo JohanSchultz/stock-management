@@ -38,7 +38,13 @@ export async function middleware(request) {
 
   if (pathname === "/menu") {
     const url = request.nextUrl.clone();
-    url.pathname = "/menu-dynamic";
+    url.pathname = "/app-menu";
+    return NextResponse.redirect(url);
+  }
+
+  if (pathname === "/menu-dynamic") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/app-menu";
     return NextResponse.redirect(url);
   }
 
@@ -55,7 +61,7 @@ export async function middleware(request) {
 
     if (error || !isMenuPathAllowed(pathname, permissions)) {
       const url = request.nextUrl.clone();
-      url.pathname = "/menu-dynamic";
+      url.pathname = "/app-menu";
       return NextResponse.redirect(url);
     }
   }
