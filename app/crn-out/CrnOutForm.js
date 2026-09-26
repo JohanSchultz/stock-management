@@ -223,7 +223,6 @@ export function CrnOutForm() {
   const [unitPrice, setUnitPrice] = useState("");
   const [invoiceId, setInvoiceId] = useState("");
   const [itemId, setItemId] = useState("");
-  const [invoiceCreditQty, setInvoiceCreditQty] = useState("");
   const [invoiceNo, setInvoiceNo] = useState("");
   const [otherItemQty, setOtherItemQty] = useState("");
   const [otherItem, setOtherItem] = useState("");
@@ -358,7 +357,10 @@ export function CrnOutForm() {
       ...current,
       {
         rowKey: `crn-line-${current.length}-${Date.now()}`,
+        invoice_id: "",
+        item_id: "",
         book_in_no: normalizedBookInNo,
+        invoice_no: "",
         description: product,
         qty,
         unit_price: unitPrice,
@@ -442,14 +444,21 @@ export function CrnOutForm() {
       ...current,
       {
         rowKey: `crn-line-${current.length}-${Date.now()}`,
+        invoice_id: String(invoiceId ?? "").trim(),
+        item_id: String(itemId ?? "").trim(),
         book_in_no: "",
+        invoice_no: String(invoiceNo ?? "").trim(),
         description,
-        qty: "",
+        qty: otherItemQty,
         unit_price: formatGridQtyOrUnitPrice(priceValue),
       },
     ]);
 
+    setInvoiceId("");
+    setItemId("");
+    setInvoiceNo("");
     setOtherItem("");
+    setOtherItemQty("");
     setOtherItemPrice("");
     setError("");
   }
@@ -751,21 +760,6 @@ export function CrnOutForm() {
               aria-hidden="true"
               className={`${readOnlyInputClassName} invisible h-0 w-0 min-w-0 shrink-0 border-0 p-0`}
             />
-            <label className="flex w-full flex-col gap-1 sm:w-28">
-              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                Qty
-              </span>
-              <input
-                type="number"
-                name="invoice_credit_qty"
-                step="any"
-                inputMode="decimal"
-                min={0}
-                value={invoiceCreditQty}
-                onChange={(e) => setInvoiceCreditQty(e.target.value)}
-                className={`${inputClassName} w-full`}
-              />
-            </label>
             <label className="flex w-full flex-col gap-1 sm:w-36">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Invoice No.
@@ -842,22 +836,31 @@ export function CrnOutForm() {
             Items
           </h2>
           <div className="mt-2 overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-            <table className="w-full min-w-max text-left text-sm">
+            <table className="w-full table-auto text-left text-sm">
               <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
                 <tr>
-                  <th className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                    Book In No.
+                  <th className="px-3 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                    invoice_id
                   </th>
-                  <th className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  <th className="px-3 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                    item_id
+                  </th>
+                  <th className="px-3 py-2 align-bottom font-medium leading-tight text-zinc-700 dark:text-zinc-300">
+                    <span className="block whitespace-normal">
+                      Book In No.
+                      <br /> / Invoice No.
+                    </span>
+                  </th>
+                  <th className="min-w-[8rem] px-3 py-2 font-medium text-zinc-700 dark:text-zinc-300">
                     Description
                   </th>
-                  <th className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  <th className="px-3 py-2 font-medium text-zinc-700 dark:text-zinc-300">
                     Qty
                   </th>
-                  <th className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  <th className="px-3 py-2 font-medium text-zinc-700 dark:text-zinc-300">
                     (Unit) Price
                   </th>
-                  <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  <th className="px-3 py-2 font-medium text-zinc-700 dark:text-zinc-300">
                     &nbsp;
                   </th>
                 </tr>
@@ -866,7 +869,7 @@ export function CrnOutForm() {
                 {crnLineItems.length === 0 ? (
                   <tr key="crn-items-empty">
                     <td
-                      colSpan={5}
+                      colSpan={7}
                       className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
                     >
                       No items added yet.
@@ -878,19 +881,25 @@ export function CrnOutForm() {
                       key={row.rowKey}
                       className="border-b border-zinc-100 last:border-b-0 dark:border-zinc-800"
                     >
-                      <td className="whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200">
-                        {row.book_in_no}
+                      <td className="whitespace-normal break-all px-3 py-2 text-zinc-800 dark:text-zinc-200">
+                        {row.invoice_id ?? ""}
                       </td>
-                      <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                      <td className="whitespace-normal break-all px-3 py-2 text-zinc-800 dark:text-zinc-200">
+                        {row.item_id ?? ""}
+                      </td>
+                      <td className="whitespace-normal px-3 py-2 text-zinc-800 dark:text-zinc-200">
+                        {row.book_in_no || row.invoice_no || ""}
+                      </td>
+                      <td className="whitespace-normal px-3 py-2 text-zinc-800 dark:text-zinc-200">
                         {row.description}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                      <td className="whitespace-normal px-3 py-2 text-zinc-800 dark:text-zinc-200">
                         {formatGridQtyOrUnitPrice(row.qty)}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                      <td className="whitespace-normal px-3 py-2 text-zinc-800 dark:text-zinc-200">
                         {row.unit_price}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-2">
+                      <td className="whitespace-nowrap px-3 py-2">
                         <button
                           type="button"
                           onClick={() => handleRemoveCrnLine(row.rowKey)}
