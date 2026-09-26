@@ -19,6 +19,8 @@ export function SupplierSelect({
   onLoadError,
   disabled = false,
   className = "mt-4 flex w-full max-w-xs flex-col gap-1",
+  labelClassName = "text-sm font-medium text-zinc-700 dark:text-zinc-300",
+  selectClassName = inputClassName,
   id,
   name = "supplier",
 }) {
@@ -53,16 +55,14 @@ export function SupplierSelect({
 
   return (
     <label className={className} htmlFor={id}>
-      <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-        Supplier
-      </span>
+      <span className={labelClassName}>Supplier</span>
       <select
         id={id}
         name={name}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled || loading}
-        className={`${inputClassName} w-full`}
+        className={`${selectClassName} w-full`}
       >
         <option value="">{loading ? "Loading…" : SELECT_PLACEHOLDER}</option>
         {options.map((option, index) => (

@@ -42,6 +42,15 @@ const readOnlyInputClassName =
 const addButtonClassName =
   "shrink-0 rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500";
 
+const bookingsInFilterLabelClassName =
+  "text-xs font-medium text-zinc-700 dark:text-zinc-300";
+
+const bookingsInFilterInputClassName =
+  "rounded border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200";
+
+const bookingsInFilterSearchLinkClassName =
+  "shrink-0 self-end pb-1 text-xs font-medium text-sky-700 underline hover:text-sky-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-sky-400 dark:hover:text-sky-300";
+
 function normalizeRevenueAccountOptions(data) {
   if (!Array.isArray(data)) return [];
 
@@ -445,62 +454,61 @@ export function CrnOutForm() {
           <h2 className="mt-6 text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Bookings In
           </h2>
-          <div className="mt-2 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-            <div className="flex flex-wrap items-end gap-3">
-              <SupplierSelect
-                value={filterSupplierId}
-                onChange={setFilterSupplierId}
-                className="flex w-full min-w-[10rem] max-w-xs flex-col gap-1"
-              />
-              <label className="flex flex-col gap-1">
-                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                  From
-                </span>
-                <input
-                  type="date"
-                  name="bookings_in_from"
-                  value={filterFromDate}
-                  onChange={(e) => setFilterFromDate(e.target.value)}
-                  className={inputClassName}
+          <div className="mt-2 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="flex flex-wrap items-end gap-2 p-2">
+              <div className="flex flex-1 flex-wrap items-end gap-2 rounded-md bg-zinc-100 p-2 dark:bg-zinc-800/60">
+                <SupplierSelect
+                  value={filterSupplierId}
+                  onChange={setFilterSupplierId}
+                  className="flex w-full min-w-[7rem] max-w-[14rem] flex-col gap-0.5"
+                  labelClassName={bookingsInFilterLabelClassName}
+                  selectClassName={bookingsInFilterInputClassName}
                 />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                  To
-                </span>
-                <input
-                  type="date"
-                  name="bookings_in_to"
-                  value={filterToDate}
-                  onChange={(e) => setFilterToDate(e.target.value)}
-                  className={inputClassName}
-                />
-              </label>
-              <label className="flex w-36 flex-col gap-1 sm:w-40">
-                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                  Booking in Number
-                </span>
-                <input
-                  type="text"
-                  name="filter_booking_in_number"
-                  inputMode="numeric"
-                  value={filterBookingInNumber}
-                  onChange={(e) => setFilterBookingInNumber(e.target.value)}
-                  className={`${inputClassName} w-full`}
-                />
-              </label>
+                <label className="flex flex-col gap-0.5">
+                  <span className={bookingsInFilterLabelClassName}>From</span>
+                  <input
+                    type="date"
+                    name="bookings_in_from"
+                    value={filterFromDate}
+                    onChange={(e) => setFilterFromDate(e.target.value)}
+                    className={bookingsInFilterInputClassName}
+                  />
+                </label>
+                <label className="flex flex-col gap-0.5">
+                  <span className={bookingsInFilterLabelClassName}>To</span>
+                  <input
+                    type="date"
+                    name="bookings_in_to"
+                    value={filterToDate}
+                    onChange={(e) => setFilterToDate(e.target.value)}
+                    className={bookingsInFilterInputClassName}
+                  />
+                </label>
+                <label className="flex w-[7.5rem] flex-col gap-0.5 sm:w-[7.875rem]">
+                  <span className={bookingsInFilterLabelClassName}>
+                    Booking In No.
+                  </span>
+                  <input
+                    type="text"
+                    name="filter_booking_in_number"
+                    inputMode="numeric"
+                    value={filterBookingInNumber}
+                    onChange={(e) => setFilterBookingInNumber(e.target.value)}
+                    className={`${bookingsInFilterInputClassName} w-full`}
+                  />
+                </label>
+              </div>
               <button
                 type="button"
                 onClick={handleSearchBookingsInClick}
                 disabled={bookingsInGridLoading}
-                className="shrink-0 rounded border border-zinc-300 bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
+                className={bookingsInFilterSearchLinkClassName}
                 aria-label="Search bookings in"
               >
                 {">>"}
               </button>
             </div>
-          </div>
-          <div className="mt-2 overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="overflow-x-auto">
             <table className="w-full min-w-max text-left text-sm">
               <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
                 <tr>
@@ -563,6 +571,7 @@ export function CrnOutForm() {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
 
           <div className="mt-4 grid max-w-5xl grid-cols-1 items-end gap-3 sm:grid-cols-[7rem_minmax(10rem,1fr)_7rem_8rem_auto] sm:gap-x-3 sm:gap-y-3">
