@@ -38,6 +38,15 @@ const filterInputClassName =
 const filterSearchLinkClassName =
   "shrink-0 self-end pb-1 text-xs font-medium text-sky-700 underline hover:text-sky-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-sky-400 dark:hover:text-sky-300";
 
+const readOnlyInputClassName =
+  "rounded border border-zinc-300 bg-zinc-50 px-2 py-1.5 text-sm text-zinc-800 read-only:cursor-default dark:border-zinc-600 dark:bg-zinc-900/50 dark:text-zinc-200";
+
+const addButtonClassName =
+  "shrink-0 rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500";
+
+/** ~4 data rows at py-2 (header scrolls separately when sticky). */
+const INVOICES_GRID_BODY_MAX_HEIGHT = "max-h-[10.5rem]";
+
 function normalizeGridRows(data, rowKeyPrefix) {
   if (!Array.isArray(data)) return [];
 
@@ -116,6 +125,38 @@ function getInvoiceNumberFromRow(row) {
   return String(value);
 }
 
+function getLineIdFromRow(row) {
+  const value = row.id ?? row.stock_item_id ?? row.stockItemId;
+  if (value == null || value === "") return "";
+  return String(value);
+}
+
+function getLineItemFromRow(row) {
+  const value = row.item ?? row.product ?? row.descr ?? row.description;
+  if (value == null || value === "") return "";
+  return String(value);
+}
+
+function getLineQtyFromRow(row) {
+  const value = row.qty ?? row.quantity ?? row.Qty;
+  if (value == null || value === "") return "";
+  return formatGridCell("qty", value);
+}
+
+function getLineUnitPriceFromRow(row) {
+  const value = row.unit_price ?? row.unitPrice;
+  if (value == null || value === "") return "";
+  return formatGridCell("unit_price", value);
+}
+
+function clearLineDetailFields(setters) {
+  setters.setSelectedLineRowKey(null);
+  setters.setLineId("");
+  setters.setLineItem("");
+  setters.setLineQty("");
+  setters.setLineUnitPrice("");
+}
+
 function DataGrid({
   title,
   columns,
@@ -124,79 +165,114 @@ function DataGrid({
   emptyMessage,
   selectedRowKey,
   onRowClick,
+  scrollBody = false,
 }) {
+  const tableBody = (
+    <tbody>
+      {loading ? (
+        <tr>
+          <td
+            colSpan={Math.max(columns.length, 1)}
+            className="px-4 py-2 text-zinc-500 dark:text-zinc-400"
+          >
+            Loading…
+          </td>
+        </tr>
+      ) : rows.length === 0 ? (
+        <tr>
+          <td
+            colSpan={Math.max(columns.length, 1)}
+            className="px-4 py-2 text-zinc-500 dark:text-zinc-400"
+          >
+            {emptyMessage}
+          </td>
+        </tr>
+      ) : (
+        rows.map((row) => (
+          <tr
+            key={row.rowKey}
+            onClick={onRowClick ? () => onRowClick(row) : undefined}
+            className={`border-b border-zinc-100 last:border-b-0 dark:border-zinc-800 ${
+              onRowClick
+                ? "cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+                : ""
+            } ${
+              selectedRowKey === row.rowKey
+                ? "bg-sky-50 dark:bg-sky-900/20"
+                : ""
+            }`}
+          >
+            {columns.map((column) => (
+              <td
+                key={`${row.rowKey}-${column}`}
+                className="whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200"
+              >
+                {formatGridCell(column, row[column])}
+              </td>
+            ))}
+          </tr>
+        ))
+      )}
+    </tbody>
+  );
+
   return (
     <>
       <h3 className="mt-4 text-sm font-medium text-zinc-700 dark:text-zinc-300">
         {title}
       </h3>
       <div className="mt-2 overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <table className="w-full min-w-max text-left text-sm">
-          <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
-            <tr>
-              {columns.length === 0 ? (
-                <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                  &nbsp;
-                </th>
-              ) : (
-                columns.map((column) => (
-                  <th
-                    key={column}
-                    className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300"
-                  >
-                    {formatColumnHeader(column)}
-                  </th>
-                ))
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td
-                  colSpan={Math.max(columns.length, 1)}
-                  className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
-                >
-                  Loading…
-                </td>
-              </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={Math.max(columns.length, 1)}
-                  className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
-                >
-                  {emptyMessage}
-                </td>
-              </tr>
-            ) : (
-              rows.map((row) => (
-                <tr
-                  key={row.rowKey}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  className={`border-b border-zinc-100 last:border-b-0 dark:border-zinc-800 ${
-                    onRowClick
-                      ? "cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
-                      : ""
-                  } ${
-                    selectedRowKey === row.rowKey
-                      ? "bg-sky-50 dark:bg-sky-900/20"
-                      : ""
-                  }`}
-                >
-                  {columns.map((column) => (
-                    <td
-                      key={`${row.rowKey}-${column}`}
-                      className="whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200"
-                    >
-                      {formatGridCell(column, row[column])}
-                    </td>
-                  ))}
+        {scrollBody ? (
+          <>
+            <table className="w-full min-w-max text-left text-sm">
+              <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
+                <tr>
+                  {columns.length === 0 ? (
+                    <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                      &nbsp;
+                    </th>
+                  ) : (
+                    columns.map((column) => (
+                      <th
+                        key={column}
+                        className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300"
+                      >
+                        {formatColumnHeader(column)}
+                      </th>
+                    ))
+                  )}
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              </thead>
+            </table>
+            <div className={`overflow-y-auto ${INVOICES_GRID_BODY_MAX_HEIGHT}`}>
+              <table className="w-full min-w-max text-left text-sm">
+                {tableBody}
+              </table>
+            </div>
+          </>
+        ) : (
+          <table className="w-full min-w-max text-left text-sm">
+            <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
+              <tr>
+                {columns.length === 0 ? (
+                  <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                    &nbsp;
+                  </th>
+                ) : (
+                  columns.map((column) => (
+                    <th
+                      key={column}
+                      className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300"
+                    >
+                      {formatColumnHeader(column)}
+                    </th>
+                  ))
+                )}
+              </tr>
+            </thead>
+            {tableBody}
+          </table>
+        )}
       </div>
     </>
   );
@@ -216,6 +292,11 @@ export function ShowInvoicesModal({
   const [selectedInvoiceRowKey, setSelectedInvoiceRowKey] = useState(null);
   const [lineRows, setLineRows] = useState([]);
   const [linesLoading, setLinesLoading] = useState(false);
+  const [selectedLineRowKey, setSelectedLineRowKey] = useState(null);
+  const [lineId, setLineId] = useState("");
+  const [lineItem, setLineItem] = useState("");
+  const [lineQty, setLineQty] = useState("");
+  const [lineUnitPrice, setLineUnitPrice] = useState("");
 
   const invoiceColumns = useMemo(() => getColumnKeys(invoiceRows), [invoiceRows]);
   const lineColumns = useMemo(() => getColumnKeys(lineRows), [lineRows]);
@@ -228,6 +309,13 @@ export function ShowInvoicesModal({
     setLineRows([]);
     setInvoicesLoading(false);
     setLinesLoading(false);
+    clearLineDetailFields({
+      setSelectedLineRowKey,
+      setLineId,
+      setLineItem,
+      setLineQty,
+      setLineUnitPrice,
+    });
   }, []);
 
   useEffect(() => {
@@ -243,6 +331,13 @@ export function ShowInvoicesModal({
       return;
     }
 
+    clearLineDetailFields({
+      setSelectedLineRowKey,
+      setLineId,
+      setLineItem,
+      setLineQty,
+      setLineUnitPrice,
+    });
     setLinesLoading(true);
 
     try {
@@ -273,6 +368,13 @@ export function ShowInvoicesModal({
 
     setSelectedInvoiceRowKey(null);
     setLineRows([]);
+    clearLineDetailFields({
+      setSelectedLineRowKey,
+      setLineId,
+      setLineItem,
+      setLineQty,
+      setLineUnitPrice,
+    });
     setInvoicesLoading(true);
 
     try {
@@ -301,6 +403,14 @@ export function ShowInvoicesModal({
   function handleInvoiceRowClick(row) {
     setSelectedInvoiceRowKey(row.rowKey);
     loadInvoiceLines(getInvoiceNumberFromRow(row));
+  }
+
+  function handleLineRowClick(row) {
+    setSelectedLineRowKey(row.rowKey);
+    setLineId(getLineIdFromRow(row));
+    setLineItem(getLineItemFromRow(row));
+    setLineQty(getLineQtyFromRow(row));
+    setLineUnitPrice(getLineUnitPriceFromRow(row));
   }
 
   if (!open) return null;
@@ -372,6 +482,7 @@ export function ShowInvoicesModal({
                 emptyMessage="No invoices found."
                 selectedRowKey={selectedInvoiceRowKey}
                 onRowClick={handleInvoiceRowClick}
+                scrollBody
               />
               <DataGrid
                 title="Line Items"
@@ -379,7 +490,66 @@ export function ShowInvoicesModal({
                 rows={lineRows}
                 loading={linesLoading}
                 emptyMessage="Select an invoice to load line items."
+                selectedRowKey={selectedLineRowKey}
+                onRowClick={handleLineRowClick}
               />
+              <div className="mt-3 flex flex-wrap items-end gap-2">
+                <label className="flex w-20 flex-col gap-1">
+                  <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                    id
+                  </span>
+                  <input
+                    type="text"
+                    name="line_item_id"
+                    value={lineId}
+                    readOnly
+                    tabIndex={-1}
+                    className={`${readOnlyInputClassName} w-full`}
+                  />
+                </label>
+                <label className="flex min-w-[8rem] flex-1 flex-col gap-1 sm:max-w-xs">
+                  <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                    Item
+                  </span>
+                  <input
+                    type="text"
+                    name="line_item"
+                    value={lineItem}
+                    readOnly
+                    tabIndex={-1}
+                    className={`${readOnlyInputClassName} w-full`}
+                  />
+                </label>
+                <label className="flex w-24 flex-col gap-1">
+                  <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                    Qty
+                  </span>
+                  <input
+                    type="text"
+                    name="line_qty"
+                    value={lineQty}
+                    readOnly
+                    tabIndex={-1}
+                    className={`${readOnlyInputClassName} w-full`}
+                  />
+                </label>
+                <label className="flex w-28 flex-col gap-1">
+                  <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                    Unit Price
+                  </span>
+                  <input
+                    type="text"
+                    name="line_unit_price"
+                    value={lineUnitPrice}
+                    readOnly
+                    tabIndex={-1}
+                    className={`${readOnlyInputClassName} w-full`}
+                  />
+                </label>
+                <button type="button" className={addButtonClassName}>
+                  Add
+                </button>
+              </div>
             </div>
           </div>
         </div>
