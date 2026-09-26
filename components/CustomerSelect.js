@@ -16,6 +16,7 @@ const inputClassName =
 export function CustomerSelect({
   value,
   onChange,
+  onSelectionLabelChange,
   onLoadError,
   disabled = false,
   className = "mt-4 flex w-full max-w-xs flex-col gap-1",
@@ -58,7 +59,19 @@ export function CustomerSelect({
         id={id}
         name={name}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          const nextValue = e.target.value;
+          onChange(nextValue);
+          if (onSelectionLabelChange) {
+            const selectedOption = options.find(
+              (option) => customerOptionValue(option) === nextValue
+            );
+            onSelectionLabelChange(
+              nextValue,
+              selectedOption ? customerOptionLabel(selectedOption) : ""
+            );
+          }
+        }}
         disabled={disabled || loading}
         className={`${inputClassName} w-full`}
       >

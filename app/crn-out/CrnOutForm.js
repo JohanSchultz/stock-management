@@ -2,6 +2,7 @@
 
 import { CustomerSelect } from "@/components/CustomerSelect";
 import { SupplierSelect } from "@/components/SupplierSelect";
+import { ShowInvoicesModal } from "./ShowInvoicesModal";
 import {
   formatGridQtyOrUnitPrice,
   isQtyOrUnitPriceColumnKey,
@@ -50,6 +51,9 @@ const bookingsInFilterInputClassName =
 
 const bookingsInFilterSearchLinkClassName =
   "shrink-0 self-end pb-1 text-xs font-medium text-sky-700 underline hover:text-sky-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-sky-400 dark:hover:text-sky-300";
+
+const showInvoicesButtonClassName =
+  "shrink-0 rounded bg-sky-100 px-4 py-2 text-sm font-medium text-sky-900 hover:bg-sky-200 dark:bg-sky-900/40 dark:text-sky-100 dark:hover:bg-sky-900/60";
 
 function normalizeRevenueAccountOptions(data) {
   if (!Array.isArray(data)) return [];
@@ -195,6 +199,8 @@ export function CrnOutForm() {
   const [revenueAccountOptions, setRevenueAccountOptions] = useState([]);
   const [revenueAccountsLoading, setRevenueAccountsLoading] = useState(false);
   const [customerId, setCustomerId] = useState("");
+  const [customerLabel, setCustomerLabel] = useState("");
+  const [showInvoicesOpen, setShowInvoicesOpen] = useState(false);
   const [filterSupplierId, setFilterSupplierId] = useState("");
   const [filterFromDate, setFilterFromDate] = useState("");
   const [filterToDate, setFilterToDate] = useState("");
@@ -296,6 +302,8 @@ export function CrnOutForm() {
     setCustomerId(nextCustomerId);
     setError("");
     if (!nextCustomerId) {
+      setCustomerLabel("");
+      setShowInvoicesOpen(false);
       setComments("");
       setBookingInRows([]);
       setCrnLineItems([]);
@@ -310,6 +318,13 @@ export function CrnOutForm() {
         setQty,
         setUnitPrice,
       });
+    }
+  }
+
+  function handleCustomerSelectionChange(nextCustomerId, nextCustomerLabel) {
+    setCustomerLabel(nextCustomerLabel);
+    if (!nextCustomerId) {
+      setCustomerLabel("");
     }
   }
 
@@ -419,10 +434,31 @@ export function CrnOutForm() {
         </select>
       </label>
 
-      <CustomerSelect
-        value={customerId}
-        onChange={handleCustomerChange}
-        onLoadError={(message) => setError(message)}
+      <div className="mt-4 flex flex-wrap items-end gap-3">
+        <CustomerSelect
+          value={customerId}
+          onChange={handleCustomerChange}
+          onSelectionLabelChange={handleCustomerSelectionChange}
+          onLoadError={(message) => setError(message)}
+          className="flex w-full min-w-[12rem] max-w-xs flex-col gap-1"
+        />
+        {customerId ? (
+          <button
+            type="button"
+            onClick={() => setShowInvoicesOpen(true)}
+            className={showInvoicesButtonClassName}
+          >
+            Show Invoices
+          </button>
+        ) : null}
+      </div>
+
+      <ShowInvoicesModal
+        open={showInvoicesOpen}
+        onClose={() => setShowInvoicesOpen(false)}
+        customerId={customerId}
+        customerLabel={customerLabel}
+        onError={(message) => setError(message)}
       />
 
       {error ? (
