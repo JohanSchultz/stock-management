@@ -221,6 +221,11 @@ export function CrnOutForm() {
   const [product, setProduct] = useState("");
   const [qty, setQty] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
+  const [invoiceId, setInvoiceId] = useState("");
+  const [itemId, setItemId] = useState("");
+  const [invoiceCreditQty, setInvoiceCreditQty] = useState("");
+  const [invoiceNo, setInvoiceNo] = useState("");
+  const [otherItemQty, setOtherItemQty] = useState("");
   const [otherItem, setOtherItem] = useState("");
   const [otherItemPrice, setOtherItemPrice] = useState("");
   const [crnLineItems, setCrnLineItems] = useState([]);
@@ -395,6 +400,39 @@ export function CrnOutForm() {
     setCreatingCreditNote(false);
   }
 
+  function handleCreditEntireInvoiceFromModal({
+    invoiceId: nextInvoiceId,
+    invoiceNumber,
+    lineTotalSum,
+  }) {
+    setInvoiceId(String(nextInvoiceId ?? ""));
+    setInvoiceNo(String(invoiceNumber ?? ""));
+    setOtherItem(`Credited invoice ${String(invoiceNumber ?? "").trim()}`);
+    setOtherItemPrice(
+      Number.isFinite(lineTotalSum) ? String(lineTotalSum) : ""
+    );
+    setShowInvoicesOpen(false);
+    setError("");
+  }
+
+  function handleCreditLineItemFromModal({
+    itemId: nextItemId,
+    invoiceNumber,
+    item,
+    qty,
+    linePrice,
+  }) {
+    setItemId(String(nextItemId ?? ""));
+    setInvoiceNo(String(invoiceNumber ?? ""));
+    setOtherItem(
+      `Credited invoice ${String(invoiceNumber ?? "").trim()}: ${String(item ?? "").trim()}`
+    );
+    setOtherItemQty(String(qty ?? ""));
+    setOtherItemPrice(Number.isFinite(linePrice) ? String(linePrice) : "");
+    setShowInvoicesOpen(false);
+    setError("");
+  }
+
   function handleAddOtherItemLine() {
     const description = String(otherItem ?? "").trim();
     const priceValue = String(otherItemPrice ?? "").trim();
@@ -467,6 +505,8 @@ export function CrnOutForm() {
         customerId={customerId}
         customerLabel={customerLabel}
         onError={(message) => setError(message)}
+        onCreditEntireInvoice={handleCreditEntireInvoiceFromModal}
+        onCreditLineItem={handleCreditLineItemFromModal}
       />
 
       {error ? (
@@ -690,7 +730,55 @@ export function CrnOutForm() {
               )}
             </div>
 
-            <label className="flex w-full flex-col gap-1 sm:col-span-3 sm:max-w-none">
+          </div>
+
+          <div className="mt-3 flex max-w-5xl flex-wrap items-end gap-3">
+            <input
+              type="text"
+              name="invoice_id"
+              value={invoiceId}
+              readOnly
+              tabIndex={-1}
+              aria-hidden="true"
+              className={`${readOnlyInputClassName} invisible h-0 w-0 min-w-0 shrink-0 border-0 p-0`}
+            />
+            <input
+              type="text"
+              name="item_id"
+              value={itemId}
+              readOnly
+              tabIndex={-1}
+              aria-hidden="true"
+              className={`${readOnlyInputClassName} invisible h-0 w-0 min-w-0 shrink-0 border-0 p-0`}
+            />
+            <label className="flex w-full flex-col gap-1 sm:w-28">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Qty
+              </span>
+              <input
+                type="number"
+                name="invoice_credit_qty"
+                step="any"
+                inputMode="decimal"
+                min={0}
+                value={invoiceCreditQty}
+                onChange={(e) => setInvoiceCreditQty(e.target.value)}
+                className={`${inputClassName} w-full`}
+              />
+            </label>
+            <label className="flex w-full flex-col gap-1 sm:w-36">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Invoice No.
+              </span>
+              <input
+                type="text"
+                name="invoice_no"
+                value={invoiceNo}
+                onChange={(e) => setInvoiceNo(e.target.value)}
+                className={`${inputClassName} w-full`}
+              />
+            </label>
+            <label className="flex min-w-[10rem] flex-1 flex-col gap-1">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Other item
               </span>
@@ -702,7 +790,22 @@ export function CrnOutForm() {
                 className={`${inputClassName} w-full`}
               />
             </label>
-            <label className="flex w-full flex-col gap-1 sm:w-auto">
+            <label className="flex w-full flex-col gap-1 sm:w-28">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Qty
+              </span>
+              <input
+                type="number"
+                name="other_item_qty"
+                step="any"
+                inputMode="decimal"
+                min={0}
+                value={otherItemQty}
+                onChange={(e) => setOtherItemQty(e.target.value)}
+                className={`${inputClassName} w-full`}
+              />
+            </label>
+            <label className="flex w-full flex-col gap-1 sm:w-32">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Price
               </span>
@@ -717,7 +820,7 @@ export function CrnOutForm() {
                 className={`${inputClassName} w-full`}
               />
             </label>
-            <div className="flex w-full items-end sm:w-auto sm:justify-self-start">
+            <div className="flex w-full items-end sm:w-auto">
               {showBottomAddButton ? (
                 <button
                   type="button"

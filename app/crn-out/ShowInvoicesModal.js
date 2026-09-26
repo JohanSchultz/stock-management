@@ -57,9 +57,6 @@ const creditButtonClassName =
 const creditEntireInvoiceButtonClassName =
   "whitespace-nowrap rounded bg-orange-500 px-2 py-1 text-xs font-medium text-white hover:bg-orange-400 dark:bg-orange-600 dark:hover:bg-orange-500";
 
-const removeButtonClassName =
-  "rounded bg-red-200 px-3 py-1 text-sm font-medium text-red-900 hover:bg-red-300 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60";
-
 /** Scroll body heights (~py-2 data rows; header stays fixed above scroll). */
 const INVOICES_SCROLL_BODY_MAX_HEIGHT = "max-h-[8rem]";
 const LINE_ITEMS_SCROLL_BODY_MAX_HEIGHT = "max-h-[5.25rem]";
@@ -140,6 +137,28 @@ function getInvoiceNumberFromRow(row) {
   const value = row.invoice_number ?? row.invoiceNumber;
   if (value == null || value === "") return "";
   return String(value);
+}
+
+function getInvoiceHeaderIdFromRow(row) {
+  if (row.id == null || row.id === "") return "";
+  return String(row.id);
+}
+
+function parseAmount(value) {
+  if (value == null || value === "") return 0;
+  const parsed = Number.parseFloat(String(value).replace(/,/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getLineTotalFromRow(row) {
+  return row.linetotal ?? row.line_total ?? row.lineTotal;
+}
+
+function sumInvoiceLineTotals(lines) {
+  return lines.reduce(
+    (sum, row) => sum + parseAmount(getLineTotalFromRow(row)),
+    0
+  );
 }
 
 function getLineIdFromRow(row) {
@@ -310,6 +329,8 @@ export function ShowInvoicesModal({
   customerId,
   customerLabel,
   onError,
+  onCreditEntireInvoice,
+  onCreditLineItem,
 }) {
   const [fromDate, setFromDate] = useState(() => currentMonthStartIsoDate());
   const [toDate, setToDate] = useState(() => currentMonthEndIsoDate());
@@ -325,7 +346,6 @@ export function ShowInvoicesModal({
   const [lineItem, setLineItem] = useState("");
   const [lineQty, setLineQty] = useState("");
   const [lineUnitPrice, setLineUnitPrice] = useState("");
-  const [itemsToCredit, setItemsToCredit] = useState([]);
 
   const invoiceColumns = useMemo(() => getColumnKeys(invoiceRows), [invoiceRows]);
   const lineColumns = useMemo(() => getColumnKeys(lineRows), [lineRows]);
@@ -347,7 +367,6 @@ export function ShowInvoicesModal({
       setLineQty,
       setLineUnitPrice,
     });
-    setItemsToCredit([]);
   }, []);
 
   useEffect(() => {
@@ -360,7 +379,7 @@ export function ShowInvoicesModal({
     const normalizedInvoiceNumber = String(invoiceNumber ?? "").trim();
     if (!normalizedInvoiceNumber) {
       setLineRows([]);
-      return;
+      return [];
     }
 
     clearLineDetailFields({
@@ -375,7 +394,7 @@ export function ShowInvoicesModal({
 
     try {
       const supabase = await prepareSupabaseClient();
-      if (!supabase) return;
+      if (!supabase) return [];
 
       const { data, error: rpcError } = await supabase.rpc(
         "pr_invoice_out_lines_by_invno",
@@ -383,10 +402,13 @@ export function ShowInvoicesModal({
       );
       if (rpcError) throw rpcError;
 
-      setLineRows(normalizeGridRows(data, "invoice-line"));
+      const lines = normalizeGridRows(data, "invoice-line");
+      setLineRows(lines);
+      return lines;
     } catch (err) {
       setLineRows([]);
       onError?.(err.message ?? "Failed to load invoice line items");
+      return [];
     } finally {
       setLinesLoading(false);
     }
@@ -453,24 +475,6 @@ export function ShowInvoicesModal({
     setLineUnitPrice(getLineUnitPriceFromRow(row));
   }
 
-  function buildCreditItemFromFields({
-    invoiceNumber,
-    id,
-    item,
-    qty,
-    unitPrice,
-    rowKeySuffix,
-  }) {
-    return {
-      rowKey: `credit-item-${rowKeySuffix}-${Date.now()}`,
-      invoice_number: invoiceNumber,
-      id,
-      item,
-      qty,
-      unit_price: unitPrice,
-    };
-  }
-
   function handleAddCreditItem() {
     const normalizedInvoiceNumber = String(lineInvoiceNumber ?? "").trim();
     const normalizedId = String(lineId ?? "").trim();
@@ -487,77 +491,50 @@ export function ShowInvoicesModal({
       return;
     }
 
-    setItemsToCredit((current) => [
-      ...current,
-      buildCreditItemFromFields({
-        invoiceNumber: normalizedInvoiceNumber,
-        id: normalizedId,
-        item: normalizedItem,
-        qty: normalizedQty,
-        unitPrice: normalizedUnitPrice,
-        rowKeySuffix: current.length,
-      }),
-    ]);
+    const qtyNum = parseAmount(normalizedQty);
+    const unitPriceNum = parseAmount(normalizedUnitPrice);
+    const linePrice = qtyNum * unitPriceNum;
 
-    clearLineDetailFields({
-      setSelectedLineRowKey,
-      setLineId,
-      setLineInvoiceNumber,
-      setLineItem,
-      setLineQty,
-      setLineUnitPrice,
+    onCreditLineItem?.({
+      itemId: normalizedId,
+      invoiceNumber: normalizedInvoiceNumber,
+      item: normalizedItem,
+      qty: normalizedQty,
+      linePrice,
     });
+    onClose?.();
   }
 
   const handleCreditEntireInvoice = useCallback(
     async (row) => {
       const invoiceNumber = getInvoiceNumberFromRow(row);
+      const invoiceHeaderId = getInvoiceHeaderIdFromRow(row);
+
       if (!invoiceNumber) {
         onError?.("Invoice number is missing for this row.");
         return;
       }
 
-      try {
-        const supabase = await prepareSupabaseClient();
-        if (!supabase) return;
+      setSelectedInvoiceRowKey(row.rowKey);
+      setSelectedInvoiceNumber(invoiceNumber);
 
-        const { data, error: rpcError } = await supabase.rpc(
-          "pr_invoice_out_lines_by_invno",
-          { p_invoice_number: invoiceNumber }
-        );
-        if (rpcError) throw rpcError;
-
-        const lines = normalizeGridRows(data, "invoice-line");
-        if (lines.length === 0) {
-          onError?.("No line items on this invoice.");
-          return;
-        }
-
-        setItemsToCredit((current) => [
-          ...current,
-          ...lines.map((line, index) =>
-            buildCreditItemFromFields({
-              invoiceNumber,
-              id: getLineIdFromRow(line),
-              item: getLineItemFromRow(line),
-              qty: getLineQtyRawFromRow(line),
-              unitPrice: getLineUnitPriceFromRow(line),
-              rowKeySuffix: current.length + index,
-            })
-          ),
-        ]);
-      } catch (err) {
-        onError?.(err.message ?? "Failed to credit entire invoice");
+      const lines = await loadInvoiceLines(invoiceNumber);
+      if (lines.length === 0) {
+        onError?.("No line items on this invoice.");
+        return;
       }
-    },
-    [onError]
-  );
 
-  function handleRemoveCreditItem(rowKey) {
-    setItemsToCredit((current) =>
-      current.filter((row) => row.rowKey !== rowKey)
-    );
-  }
+      const lineTotalSum = sumInvoiceLineTotals(lines);
+
+      onCreditEntireInvoice?.({
+        invoiceId: invoiceHeaderId,
+        invoiceNumber,
+        lineTotalSum,
+      });
+      onClose?.();
+    },
+    [loadInvoiceLines, onClose, onCreditEntireInvoice, onError]
+  );
 
   if (!open) return null;
 
@@ -740,74 +717,6 @@ export function ShowInvoicesModal({
                 >
                   Credit
                 </button>
-              </div>
-
-              <h3 className="mt-4 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                Items to be Credited
-              </h3>
-              <div className="mt-2 overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-                <table className="w-full min-w-max text-left text-sm">
-                  <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
-                    <tr>
-                      <th className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                        id
-                      </th>
-                      <th className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                        Item
-                      </th>
-                      <th className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                        Qty
-                      </th>
-                      <th className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                        Unit Price
-                      </th>
-                      <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                        &nbsp;
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {itemsToCredit.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={5}
-                          className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
-                        >
-                          No items added yet.
-                        </td>
-                      </tr>
-                    ) : (
-                      itemsToCredit.map((row) => (
-                        <tr
-                          key={row.rowKey}
-                          className="border-b border-zinc-100 last:border-b-0 dark:border-zinc-800"
-                        >
-                          <td className="whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200">
-                            {row.id}
-                          </td>
-                          <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
-                            {row.item}
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200">
-                            {formatGridQtyOrUnitPrice(row.qty)}
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200">
-                            {row.unit_price}
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-2">
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveCreditItem(row.rowKey)}
-                              className={removeButtonClassName}
-                            >
-                              Remove
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
               </div>
             </div>
           </div>
