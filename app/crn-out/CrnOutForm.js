@@ -7,6 +7,10 @@ import {
   formatGridQtyOrUnitPrice,
   isQtyOrUnitPriceColumnKey,
 } from "@/lib/format/gridNumberFormat";
+import {
+  currentMonthEndIsoDate,
+  currentMonthStartIsoDate,
+} from "@/lib/date/isoMonthRange";
 import { prepareSupabaseClient } from "@/lib/supabase/useSupabaseIdleRecovery";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -202,8 +206,12 @@ export function CrnOutForm() {
   const [customerLabel, setCustomerLabel] = useState("");
   const [showInvoicesOpen, setShowInvoicesOpen] = useState(false);
   const [filterSupplierId, setFilterSupplierId] = useState("");
-  const [filterFromDate, setFilterFromDate] = useState("");
-  const [filterToDate, setFilterToDate] = useState("");
+  const [filterFromDate, setFilterFromDate] = useState(() =>
+    currentMonthStartIsoDate()
+  );
+  const [filterToDate, setFilterToDate] = useState(() =>
+    currentMonthEndIsoDate()
+  );
   const [filterBookingInNumber, setFilterBookingInNumber] = useState("");
   const [bookingInRows, setBookingInRows] = useState([]);
   const [bookingsInGridLoading, setBookingsInGridLoading] = useState(false);
@@ -308,8 +316,8 @@ export function CrnOutForm() {
       setBookingInRows([]);
       setCrnLineItems([]);
       setFilterSupplierId("");
-      setFilterFromDate("");
-      setFilterToDate("");
+      setFilterFromDate(currentMonthStartIsoDate());
+      setFilterToDate(currentMonthEndIsoDate());
       setFilterBookingInNumber("");
       clearBookingInDetailFields({
         setSelectedBookingInRowKey,
