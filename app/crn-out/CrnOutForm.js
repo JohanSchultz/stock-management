@@ -263,7 +263,6 @@ export function CrnOutForm() {
   }, []);
 
   const loadBookingsInGrid = useCallback(async () => {
-    setCrnLineItems([]);
     clearBookingInDetailFields({
       setSelectedBookingInRowKey,
       setBookInNo,
