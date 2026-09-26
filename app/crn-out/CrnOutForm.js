@@ -156,6 +156,64 @@ function parseInteger(value) {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
+function parseNumeric(value) {
+  if (value == null || value === "") return null;
+  const normalized = String(value).replace(/,/g, "").trim();
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseRpcIntegerReturn(data) {
+  if (typeof data === "number" && Number.isFinite(data)) {
+    return Math.trunc(data);
+  }
+  if (typeof data === "string") {
+    const trimmed = data.trim();
+    if (/^-?\d+$/.test(trimmed)) {
+      return Number.parseInt(trimmed, 10);
+    }
+  }
+  if (Array.isArray(data)) {
+    return parseRpcIntegerReturn(data[0]);
+  }
+  if (data && typeof data === "object") {
+    const fromRow = data.id ?? data.crn_id ?? data.crn_header_id;
+    if (fromRow != null) return parseInteger(fromRow);
+  }
+  return parseInteger(data);
+}
+
+function getSelectedRevenueAccountText(revenueAccountId, revenueAccountOptions) {
+  const selected = revenueAccountOptions.find(
+    (option) => String(option.id ?? "") === String(revenueAccountId ?? "")
+  );
+  if (!selected) return "";
+  return revenueAccountOptionLabel(selected);
+}
+
+function getCrnLineBookInOrInvoiceNoValue(row) {
+  return String(row.book_in_no || row.invoice_no || "").trim();
+}
+
+function buildCrnOutLineRpcParams(crnHeaderId, row) {
+  const invoiceOutIdText = String(row.invoice_id ?? "").trim();
+  const hasInvoiceOutId = invoiceOutIdText !== "";
+  const bookInOrInvoiceNo = getCrnLineBookInOrInvoiceNoValue(row);
+  const qtyText = String(row.qty ?? "").trim();
+
+  return {
+    p_crn_header_id: crnHeaderId,
+    p_booking_in_id: hasInvoiceOutId
+      ? 0
+      : (parseInteger(bookInOrInvoiceNo) ?? 0),
+    p_stock_item_id: parseInteger(row.item_id) ?? 0,
+    p_invoice_out_id: parseInteger(invoiceOutIdText) ?? 0,
+    p_unit_price: parseNumeric(row.unit_price) ?? 0,
+    p_qty: qtyText === "" ? 1 : (parseNumeric(qtyText) ?? 1),
+    p_descr: String(row.description ?? ""),
+  };
+}
+
 function parseBookingInIdParam(value) {
   const trimmed = String(value ?? "").trim();
   if (!trimmed) return 0;
@@ -225,11 +283,13 @@ export function CrnOutForm() {
   const [itemId, setItemId] = useState("");
   const [invoiceNo, setInvoiceNo] = useState("");
   const [otherItemQty, setOtherItemQty] = useState("");
+  const [otherItemQtyDisabled, setOtherItemQtyDisabled] = useState(false);
   const [otherItem, setOtherItem] = useState("");
   const [otherItemPrice, setOtherItemPrice] = useState("");
   const [crnLineItems, setCrnLineItems] = useState([]);
   const [createConfirmOpen, setCreateConfirmOpen] = useState(false);
   const [creatingCreditNote, setCreatingCreditNote] = useState(false);
+  const [crnId, setCrnId] = useState("");
   const [error, setError] = useState("");
 
   const showComments = Boolean(revenueAccountId && customerId);
@@ -389,16 +449,82 @@ export function CrnOutForm() {
     setCreateConfirmOpen(false);
   }
 
-  function handleCreateCreditNoteOnly() {
+  async function submitCreditNoteCreation() {
     setCreatingCreditNote(true);
-    setCreateConfirmOpen(false);
-    setCreatingCreditNote(false);
+    setError("");
+
+    const parsedCustomerId = parseInteger(customerId);
+    if (parsedCustomerId == null) {
+      setError("Select a customer before creating a credit note.");
+      setCreatingCreditNote(false);
+      return;
+    }
+
+    if (!revenueAccountId) {
+      setError("Select a revenue account before creating a credit note.");
+      setCreatingCreditNote(false);
+      return;
+    }
+
+    if (crnLineItems.length === 0) {
+      setError("Add at least one item before creating a credit note.");
+      setCreatingCreditNote(false);
+      return;
+    }
+
+    const accountNumberText = getSelectedRevenueAccountText(
+      revenueAccountId,
+      revenueAccountOptions
+    );
+    if (!accountNumberText) {
+      setError("Revenue account text could not be resolved.");
+      setCreatingCreditNote(false);
+      return;
+    }
+
+    try {
+      const supabase = await prepareSupabaseClient();
+      if (!supabase) return;
+
+      const { data: headerData, error: headerError } = await supabase.rpc(
+        "pi_crn_out_header",
+        {
+          p_customer_id: parsedCustomerId,
+          p_account_number: accountNumberText,
+          p_comments: comments,
+        }
+      );
+      if (headerError) throw headerError;
+
+      const newCrnHeaderId = parseRpcIntegerReturn(headerData);
+      if (newCrnHeaderId == null) {
+        throw new Error("Credit note header id was not returned.");
+      }
+
+      setCrnId(String(newCrnHeaderId));
+
+      for (const line of crnLineItems) {
+        const { error: lineError } = await supabase.rpc(
+          "pi_crn_out_line",
+          buildCrnOutLineRpcParams(newCrnHeaderId, line)
+        );
+        if (lineError) throw lineError;
+      }
+
+      setCreateConfirmOpen(false);
+    } catch (err) {
+      setError(err.message ?? "Failed to create credit note");
+    } finally {
+      setCreatingCreditNote(false);
+    }
+  }
+
+  function handleCreateCreditNoteOnly() {
+    void submitCreditNoteCreation();
   }
 
   function handleCreateCreditNoteAndPrint() {
-    setCreatingCreditNote(true);
-    setCreateConfirmOpen(false);
-    setCreatingCreditNote(false);
+    void submitCreditNoteCreation();
   }
 
   function handleCreditEntireInvoiceFromModal({
@@ -412,6 +538,8 @@ export function CrnOutForm() {
     setOtherItemPrice(
       Number.isFinite(lineTotalSum) ? String(lineTotalSum) : ""
     );
+    setOtherItemQty("");
+    setOtherItemQtyDisabled(true);
     setShowInvoicesOpen(false);
     setError("");
   }
@@ -432,6 +560,7 @@ export function CrnOutForm() {
     );
     setOtherItemQty(String(qty ?? ""));
     setOtherItemPrice(Number.isFinite(linePrice) ? String(linePrice) : "");
+    setOtherItemQtyDisabled(false);
     setShowInvoicesOpen(false);
     setError("");
   }
@@ -460,12 +589,22 @@ export function CrnOutForm() {
     setInvoiceNo("");
     setOtherItem("");
     setOtherItemQty("");
+    setOtherItemQtyDisabled(false);
     setOtherItemPrice("");
     setError("");
   }
 
   return (
     <div className="mt-6 max-w-6xl">
+      <input
+        type="text"
+        name="crn_id"
+        value={crnId}
+        readOnly
+        tabIndex={-1}
+        aria-hidden="true"
+        className={`${readOnlyInputClassName} invisible absolute h-0 w-0 overflow-hidden border-0 p-0`}
+      />
       <label className="flex w-full max-w-2xl flex-col gap-1">
         <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
           Revenue Account
@@ -804,8 +943,11 @@ export function CrnOutForm() {
                 inputMode="decimal"
                 min={0}
                 value={otherItemQty}
+                disabled={otherItemQtyDisabled}
                 onChange={(e) => setOtherItemQty(e.target.value)}
-                className={`${inputClassName} w-full`}
+                className={`${
+                  otherItemQtyDisabled ? readOnlyInputClassName : inputClassName
+                } w-full disabled:cursor-not-allowed`}
               />
             </label>
             <label className="flex w-full flex-col gap-1 sm:w-32">
