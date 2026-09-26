@@ -1,5 +1,6 @@
 "use client";
 
+import { CustomerSelect } from "@/components/CustomerSelect";
 import { SupplierSelect } from "@/components/SupplierSelect";
 import {
   formatGridQtyOrUnitPrice,
@@ -101,6 +102,7 @@ function getColumnKeys(rows) {
 
 function formatColumnHeader(key) {
   if (key === "id" || key === "booking_in_id") return "Book In Number";
+  if (key === "supplier") return "Supplier";
   if (BOOK_IN_DATE_COLUMN_KEYS.has(key)) return "Book In Date";
   return key.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
@@ -135,6 +137,13 @@ function parseInteger(value) {
   if (value == null || value === "") return null;
   const parsed = Number.parseInt(String(value), 10);
   return Number.isNaN(parsed) ? null : parsed;
+}
+
+function parseBookingInIdParam(value) {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed) return 0;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function getBookInNumberFromRow(row) {
@@ -176,7 +185,11 @@ export function CrnOutForm() {
   const [revenueAccountId, setRevenueAccountId] = useState("");
   const [revenueAccountOptions, setRevenueAccountOptions] = useState([]);
   const [revenueAccountsLoading, setRevenueAccountsLoading] = useState(false);
-  const [supplierId, setSupplierId] = useState("");
+  const [customerId, setCustomerId] = useState("");
+  const [filterSupplierId, setFilterSupplierId] = useState("");
+  const [filterFromDate, setFilterFromDate] = useState("");
+  const [filterToDate, setFilterToDate] = useState("");
+  const [filterBookingInNumber, setFilterBookingInNumber] = useState("");
   const [bookingInRows, setBookingInRows] = useState([]);
   const [bookingsInGridLoading, setBookingsInGridLoading] = useState(false);
   const [comments, setComments] = useState("");
@@ -188,9 +201,11 @@ export function CrnOutForm() {
   const [otherItem, setOtherItem] = useState("");
   const [otherItemPrice, setOtherItemPrice] = useState("");
   const [crnLineItems, setCrnLineItems] = useState([]);
+  const [createConfirmOpen, setCreateConfirmOpen] = useState(false);
+  const [creatingCreditNote, setCreatingCreditNote] = useState(false);
   const [error, setError] = useState("");
 
-  const showComments = Boolean(revenueAccountId && supplierId);
+  const showComments = Boolean(revenueAccountId && customerId);
   const showBookingsInGrid = showComments;
   const showTopAddButton = String(bookInNo ?? "").trim() !== "";
   const showBottomAddButton =
@@ -220,21 +235,7 @@ export function CrnOutForm() {
     }
   }, []);
 
-  const loadBookingsInGrid = useCallback(async (selectedSupplierId) => {
-    const parsedSupplierId = parseInteger(selectedSupplierId);
-    if (!selectedSupplierId || parsedSupplierId == null) {
-      setBookingInRows([]);
-      setCrnLineItems([]);
-      clearBookingInDetailFields({
-        setSelectedBookingInRowKey,
-        setBookInNo,
-        setProduct,
-        setQty,
-        setUnitPrice,
-      });
-      return;
-    }
-
+  const loadBookingsInGrid = useCallback(async () => {
     setCrnLineItems([]);
     clearBookingInDetailFields({
       setSelectedBookingInRowKey,
@@ -244,13 +245,19 @@ export function CrnOutForm() {
       setUnitPrice,
     });
     setBookingsInGridLoading(true);
+    setError("");
 
     try {
       const supabase = await prepareSupabaseClient();
       if (!supabase) return;
 
+      const pSupplierId = parseInteger(filterSupplierId) ?? 0;
+
       const { data, error: rpcError } = await supabase.rpc("pr__crn_booking_ins", {
-        p_customer_id: parsedSupplierId,
+        p_supplier_id: pSupplierId,
+        p_from: filterFromDate || null,
+        p_to: filterToDate || null,
+        p_booking_in_id: parseBookingInIdParam(filterBookingInNumber),
       });
       if (rpcError) throw rpcError;
 
@@ -261,28 +268,32 @@ export function CrnOutForm() {
     } finally {
       setBookingsInGridLoading(false);
     }
-  }, []);
+  }, [
+    filterSupplierId,
+    filterFromDate,
+    filterToDate,
+    filterBookingInNumber,
+  ]);
 
   useEffect(() => {
     loadRevenueAccounts();
   }, [loadRevenueAccounts]);
 
-  useEffect(() => {
-    if (!supplierId) {
-      setBookingInRows([]);
-      return;
-    }
+  function handleSearchBookingsInClick() {
+    loadBookingsInGrid();
+  }
 
-    loadBookingsInGrid(supplierId);
-  }, [supplierId, loadBookingsInGrid]);
-
-  function handleSupplierChange(nextSupplierId) {
-    setSupplierId(nextSupplierId);
+  function handleCustomerChange(nextCustomerId) {
+    setCustomerId(nextCustomerId);
     setError("");
-    if (!nextSupplierId) {
+    if (!nextCustomerId) {
       setComments("");
       setBookingInRows([]);
       setCrnLineItems([]);
+      setFilterSupplierId("");
+      setFilterFromDate("");
+      setFilterToDate("");
+      setFilterBookingInNumber("");
       clearBookingInDetailFields({
         setSelectedBookingInRowKey,
         setBookInNo,
@@ -329,6 +340,27 @@ export function CrnOutForm() {
 
   function handleRemoveCrnLine(rowKey) {
     setCrnLineItems((current) => current.filter((row) => row.rowKey !== rowKey));
+  }
+
+  function handleCreateCreditNoteClick() {
+    setError("");
+    setCreateConfirmOpen(true);
+  }
+
+  function handleCreateConfirmNo() {
+    setCreateConfirmOpen(false);
+  }
+
+  function handleCreateCreditNoteOnly() {
+    setCreatingCreditNote(true);
+    setCreateConfirmOpen(false);
+    setCreatingCreditNote(false);
+  }
+
+  function handleCreateCreditNoteAndPrint() {
+    setCreatingCreditNote(true);
+    setCreateConfirmOpen(false);
+    setCreatingCreditNote(false);
   }
 
   function handleAddOtherItemLine() {
@@ -378,9 +410,9 @@ export function CrnOutForm() {
         </select>
       </label>
 
-      <SupplierSelect
-        value={supplierId}
-        onChange={handleSupplierChange}
+      <CustomerSelect
+        value={customerId}
+        onChange={handleCustomerChange}
         onLoadError={(message) => setError(message)}
       />
 
@@ -413,6 +445,61 @@ export function CrnOutForm() {
           <h2 className="mt-6 text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Bookings In
           </h2>
+          <div className="mt-2 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="flex flex-wrap items-end gap-3">
+              <SupplierSelect
+                value={filterSupplierId}
+                onChange={setFilterSupplierId}
+                className="flex w-full min-w-[10rem] max-w-xs flex-col gap-1"
+              />
+              <label className="flex flex-col gap-1">
+                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  From
+                </span>
+                <input
+                  type="date"
+                  name="bookings_in_from"
+                  value={filterFromDate}
+                  onChange={(e) => setFilterFromDate(e.target.value)}
+                  className={inputClassName}
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  To
+                </span>
+                <input
+                  type="date"
+                  name="bookings_in_to"
+                  value={filterToDate}
+                  onChange={(e) => setFilterToDate(e.target.value)}
+                  className={inputClassName}
+                />
+              </label>
+              <label className="flex w-36 flex-col gap-1 sm:w-40">
+                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Booking in Number
+                </span>
+                <input
+                  type="text"
+                  name="filter_booking_in_number"
+                  inputMode="numeric"
+                  value={filterBookingInNumber}
+                  onChange={(e) => setFilterBookingInNumber(e.target.value)}
+                  className={`${inputClassName} w-full`}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={handleSearchBookingsInClick}
+                disabled={bookingsInGridLoading}
+                className="shrink-0 rounded border border-zinc-300 bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
+                aria-label="Search bookings in"
+              >
+                {">>"}
+              </button>
+            </div>
+          </div>
           <div className="mt-2 overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
             <table className="w-full min-w-max text-left text-sm">
               <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
@@ -478,8 +565,8 @@ export function CrnOutForm() {
             </table>
           </div>
 
-          <div className="mt-4 flex max-w-5xl flex-wrap items-end gap-3">
-            <label className="flex w-28 shrink-0 flex-col gap-1">
+          <div className="mt-4 grid max-w-5xl grid-cols-1 items-end gap-3 sm:grid-cols-[7rem_minmax(10rem,1fr)_7rem_8rem_auto] sm:gap-x-3 sm:gap-y-3">
+            <label className="flex w-full flex-col gap-1 sm:w-auto">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Book In No.
               </span>
@@ -492,7 +579,7 @@ export function CrnOutForm() {
                 className={`${readOnlyInputClassName} w-full`}
               />
             </label>
-            <label className="flex min-w-[10rem] flex-1 flex-col gap-1 sm:max-w-md">
+            <label className="flex w-full min-w-0 flex-col gap-1 sm:max-w-md">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Product
               </span>
@@ -505,7 +592,7 @@ export function CrnOutForm() {
                 className={`${readOnlyInputClassName} w-full`}
               />
             </label>
-            <label className="flex w-24 shrink-0 flex-col gap-1 sm:w-28">
+            <label className="flex w-full flex-col gap-1 sm:w-auto">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Qty
               </span>
@@ -520,7 +607,7 @@ export function CrnOutForm() {
                 className={`${inputClassName} w-full`}
               />
             </label>
-            <label className="flex w-28 shrink-0 flex-col gap-1 sm:w-32">
+            <label className="flex w-full flex-col gap-1 sm:w-auto">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Unit Price
               </span>
@@ -533,19 +620,24 @@ export function CrnOutForm() {
                 className={`${readOnlyInputClassName} w-full`}
               />
             </label>
-            {showTopAddButton ? (
-              <button
-                type="button"
-                onClick={handleAddBookingInLine}
-                className={addButtonClassName}
-              >
-                Add
-              </button>
-            ) : null}
-          </div>
+            <div className="flex w-full items-end sm:w-auto sm:justify-self-start">
+              {showTopAddButton ? (
+                <button
+                  type="button"
+                  onClick={handleAddBookingInLine}
+                  className={addButtonClassName}
+                >
+                  Add
+                </button>
+              ) : (
+                <span
+                  className="hidden min-h-[2.5rem] sm:inline-block sm:min-w-[4.5rem]"
+                  aria-hidden
+                />
+              )}
+            </div>
 
-          <div className="mt-3 flex max-w-5xl flex-wrap items-end gap-3">
-            <label className="flex min-w-[12rem] flex-1 flex-col gap-1 sm:max-w-2xl">
+            <label className="flex w-full flex-col gap-1 sm:col-span-3 sm:max-w-none">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Other item
               </span>
@@ -557,7 +649,7 @@ export function CrnOutForm() {
                 className={`${inputClassName} w-full`}
               />
             </label>
-            <label className="flex w-28 shrink-0 flex-col gap-1 sm:w-32">
+            <label className="flex w-full flex-col gap-1 sm:w-auto">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Price
               </span>
@@ -572,15 +664,22 @@ export function CrnOutForm() {
                 className={`${inputClassName} w-full`}
               />
             </label>
-            {showBottomAddButton ? (
-              <button
-                type="button"
-                onClick={handleAddOtherItemLine}
-                className={addButtonClassName}
-              >
-                Add
-              </button>
-            ) : null}
+            <div className="flex w-full items-end sm:w-auto sm:justify-self-start">
+              {showBottomAddButton ? (
+                <button
+                  type="button"
+                  onClick={handleAddOtherItemLine}
+                  className={addButtonClassName}
+                >
+                  Add
+                </button>
+              ) : (
+                <span
+                  className="hidden min-h-[2.5rem] sm:inline-block sm:min-w-[4.5rem]"
+                  aria-hidden
+                />
+              )}
+            </div>
           </div>
 
           <h2 className="mt-6 text-sm font-medium text-zinc-700 dark:text-zinc-300">
@@ -650,7 +749,62 @@ export function CrnOutForm() {
               </tbody>
             </table>
           </div>
+
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={handleCreateCreditNoteClick}
+              disabled={creatingCreditNote}
+              className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              CREATE CREDIT NOTE
+            </button>
+          </div>
         </>
+      ) : null}
+
+      {createConfirmOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-credit-note-confirm-title"
+            className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-6 shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
+          >
+            <h3
+              id="create-credit-note-confirm-title"
+              className="text-base font-semibold text-zinc-900 dark:text-zinc-50"
+            >
+              Confirm that the Details are correct..
+            </h3>
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={handleCreateConfirmNo}
+                disabled={creatingCreditNote}
+                className="rounded border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+              >
+                No, Wait
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateCreditNoteOnly}
+                disabled={creatingCreditNote}
+                className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {creatingCreditNote ? "Creating…" : "Create Only"}
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateCreditNoteAndPrint}
+                disabled={creatingCreditNote}
+                className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {creatingCreditNote ? "Creating…" : "Create and Print"}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );
