@@ -418,12 +418,14 @@ export function CrnOutForm() {
   }
 
   function handleCreditLineItemFromModal({
+    invoiceId: nextInvoiceId,
     itemId: nextItemId,
     invoiceNumber,
     item,
     qty,
     linePrice,
   }) {
+    setInvoiceId(String(nextInvoiceId ?? ""));
     setItemId(String(nextItemId ?? ""));
     setInvoiceNo(String(invoiceNumber ?? ""));
     setOtherItem(

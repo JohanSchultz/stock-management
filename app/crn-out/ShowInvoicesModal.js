@@ -338,6 +338,7 @@ export function ShowInvoicesModal({
   const [invoicesLoading, setInvoicesLoading] = useState(false);
   const [selectedInvoiceRowKey, setSelectedInvoiceRowKey] = useState(null);
   const [selectedInvoiceNumber, setSelectedInvoiceNumber] = useState("");
+  const [selectedInvoiceHeaderId, setSelectedInvoiceHeaderId] = useState("");
   const [lineRows, setLineRows] = useState([]);
   const [linesLoading, setLinesLoading] = useState(false);
   const [selectedLineRowKey, setSelectedLineRowKey] = useState(null);
@@ -356,6 +357,7 @@ export function ShowInvoicesModal({
     setInvoiceRows([]);
     setSelectedInvoiceRowKey(null);
     setSelectedInvoiceNumber("");
+    setSelectedInvoiceHeaderId("");
     setLineRows([]);
     setInvoicesLoading(false);
     setLinesLoading(false);
@@ -423,6 +425,7 @@ export function ShowInvoicesModal({
 
     setSelectedInvoiceRowKey(null);
     setSelectedInvoiceNumber("");
+    setSelectedInvoiceHeaderId("");
     setLineRows([]);
     clearLineDetailFields({
       setSelectedLineRowKey,
@@ -461,6 +464,7 @@ export function ShowInvoicesModal({
     const invoiceNumber = getInvoiceNumberFromRow(row);
     setSelectedInvoiceRowKey(row.rowKey);
     setSelectedInvoiceNumber(invoiceNumber);
+    setSelectedInvoiceHeaderId(getInvoiceHeaderIdFromRow(row));
     loadInvoiceLines(invoiceNumber);
   }
 
@@ -496,6 +500,7 @@ export function ShowInvoicesModal({
     const linePrice = qtyNum * unitPriceNum;
 
     onCreditLineItem?.({
+      invoiceId: selectedInvoiceHeaderId,
       itemId: normalizedId,
       invoiceNumber: normalizedInvoiceNumber,
       item: normalizedItem,
@@ -517,6 +522,7 @@ export function ShowInvoicesModal({
 
       setSelectedInvoiceRowKey(row.rowKey);
       setSelectedInvoiceNumber(invoiceNumber);
+      setSelectedInvoiceHeaderId(invoiceHeaderId);
 
       const lines = await loadInvoiceLines(invoiceNumber);
       if (lines.length === 0) {
