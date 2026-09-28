@@ -150,6 +150,51 @@ function formatBookingsInGridCell(column, value) {
   return formatCellValue(value);
 }
 
+const CRN_ITEM_COLUMN_KEYS = [
+  "invoice_id",
+  "item_id",
+  "book_in_no",
+  "invoice_no",
+  "description",
+  "qty",
+  "unit_price",
+];
+
+function mergeCrnItemColumnKeys(rows) {
+  const fromRows = getColumnKeys(rows);
+  if (fromRows.length === 0) return [...CRN_ITEM_COLUMN_KEYS];
+
+  const seen = new Set();
+  const keys = [];
+  for (const key of CRN_ITEM_COLUMN_KEYS) {
+    if (fromRows.includes(key)) {
+      keys.push(key);
+      seen.add(key);
+    }
+  }
+  for (const key of fromRows) {
+    if (!seen.has(key)) {
+      keys.push(key);
+    }
+  }
+  return keys;
+}
+
+function formatCrnItemColumnHeader(key) {
+  if (key === "book_in_no") return "Book In No.";
+  if (key === "invoice_no") return "Invoice No.";
+  if (key === "unit_price") return "(Unit) Price";
+  return formatColumnHeader(key);
+}
+
+function formatCrnItemGridCell(column, row) {
+  const value = row[column];
+  if (isQtyOrUnitPriceColumnKey(column)) {
+    return formatGridQtyOrUnitPrice(value);
+  }
+  return formatCellValue(value);
+}
+
 function parseInteger(value) {
   if (value == null || value === "") return null;
   const parsed = Number.parseInt(String(value), 10);
@@ -363,6 +408,11 @@ export function CrnOutForm() {
   const bookingInColumns = useMemo(
     () => getColumnKeys(bookingInRows),
     [bookingInRows]
+  );
+
+  const crnItemColumns = useMemo(
+    () => mergeCrnItemColumnKeys(crnLineItems),
+    [crnLineItems]
   );
 
   const loadRevenueAccounts = useCallback(async () => {
@@ -710,34 +760,6 @@ export function CrnOutForm() {
 
   return (
     <div className="mt-6 max-w-6xl">
-      <div className="mb-4 flex flex-wrap items-end gap-3">
-        <label className="flex w-full flex-col gap-1 sm:w-28">
-          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            crn_id
-          </span>
-          <input
-            type="text"
-            name="crn_id"
-            value={crnId}
-            readOnly
-            tabIndex={-1}
-            className={`${readOnlyInputClassName} w-full`}
-          />
-        </label>
-        <label className="flex w-full flex-col gap-1 sm:w-36">
-          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            crn_no
-          </span>
-          <input
-            type="text"
-            name="crn_no"
-            value={crnNo}
-            readOnly
-            tabIndex={-1}
-            className={`${readOnlyInputClassName} w-full`}
-          />
-        </label>
-      </div>
       <label className="flex w-full max-w-2xl flex-col gap-1">
         <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
           Revenue Account
@@ -781,23 +803,52 @@ export function CrnOutForm() {
         </p>
       ) : null}
 
-      {showComments ? (
-        <label className="mt-4 flex w-full flex-col gap-1">
-          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Comments
-          </span>
-          <input
-            type="text"
-            name="comments"
-            value={comments}
-            onChange={(e) => setComments(e.target.value)}
-            className={`${inputClassName} w-full`}
-          />
-        </label>
-      ) : null}
-
       {showAfterRevenue ? (
         <>
+          <div className="mt-4 flex flex-wrap items-end gap-3">
+            <label className="flex w-full flex-col gap-1 sm:w-28">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                crn_id
+              </span>
+              <input
+                type="text"
+                name="crn_id"
+                value={crnId}
+                readOnly
+                tabIndex={-1}
+                className={`${readOnlyInputClassName} w-full`}
+              />
+            </label>
+            <label className="flex w-full flex-col gap-1 sm:w-36">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                crn_no
+              </span>
+              <input
+                type="text"
+                name="crn_no"
+                value={crnNo}
+                readOnly
+                tabIndex={-1}
+                className={`${readOnlyInputClassName} w-full`}
+              />
+            </label>
+          </div>
+
+          {showComments ? (
+            <label className="mt-4 flex w-full flex-col gap-1">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Comments
+              </span>
+              <input
+                type="text"
+                name="comments"
+                value={comments}
+                onChange={(e) => setComments(e.target.value)}
+                className={`${inputClassName} w-full`}
+              />
+            </label>
+          ) : null}
+
           {showBookingsInGrid ? (
             <>
           <h2 className="mt-6 text-sm font-medium text-zinc-700 dark:text-zinc-300">
@@ -869,7 +920,7 @@ export function CrnOutForm() {
                     bookingInColumns.map((column) => (
                       <th
                         key={column}
-                        className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300"
+                        className="whitespace-normal px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300"
                       >
                         {formatColumnHeader(column)}
                       </th>
@@ -910,7 +961,7 @@ export function CrnOutForm() {
                       {bookingInColumns.map((column) => (
                         <td
                           key={`${row.rowKey}-${column}`}
-                          className="whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200"
+                          className="whitespace-normal break-words px-4 py-2 text-zinc-800 dark:text-zinc-200"
                         >
                           {formatBookingsInGridCell(column, row[column])}
                         </td>
@@ -1126,25 +1177,18 @@ export function CrnOutForm() {
             Items
           </h2>
           <div className="mt-2 overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-            <table className="w-full table-auto text-left text-sm">
+            <table className="w-full min-w-max table-auto text-left text-sm">
               <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
                 <tr>
-                  <th className="px-3 py-2 align-bottom font-medium leading-tight text-zinc-700 dark:text-zinc-300">
-                    <span className="block whitespace-normal">
-                      Book In No.
-                      <br /> / Invoice No.
-                    </span>
-                  </th>
-                  <th className="min-w-[8rem] px-3 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                    Description
-                  </th>
-                  <th className="px-3 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                    Qty
-                  </th>
-                  <th className="px-3 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                    (Unit) Price
-                  </th>
-                  <th className="px-3 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  {crnItemColumns.map((column) => (
+                    <th
+                      key={column}
+                      className="whitespace-normal px-3 py-2 font-medium text-zinc-700 dark:text-zinc-300"
+                    >
+                      {formatCrnItemColumnHeader(column)}
+                    </th>
+                  ))}
+                  <th className="whitespace-normal px-3 py-2 font-medium text-zinc-700 dark:text-zinc-300">
                     &nbsp;
                   </th>
                 </tr>
@@ -1153,7 +1197,7 @@ export function CrnOutForm() {
                 {crnLineItems.length === 0 ? (
                   <tr key="crn-items-empty">
                     <td
-                      colSpan={5}
+                      colSpan={Math.max(crnItemColumns.length, 1) + 1}
                       className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
                     >
                       No items added yet.
@@ -1165,18 +1209,14 @@ export function CrnOutForm() {
                       key={row.rowKey}
                       className="border-b border-zinc-100 last:border-b-0 dark:border-zinc-800"
                     >
-                      <td className="whitespace-normal px-3 py-2 text-zinc-800 dark:text-zinc-200">
-                        {row.book_in_no || row.invoice_no || ""}
-                      </td>
-                      <td className="whitespace-normal px-3 py-2 text-zinc-800 dark:text-zinc-200">
-                        {row.description}
-                      </td>
-                      <td className="whitespace-normal px-3 py-2 text-zinc-800 dark:text-zinc-200">
-                        {formatGridQtyOrUnitPrice(row.qty)}
-                      </td>
-                      <td className="whitespace-normal px-3 py-2 text-zinc-800 dark:text-zinc-200">
-                        {row.unit_price}
-                      </td>
+                      {crnItemColumns.map((column) => (
+                        <td
+                          key={`${row.rowKey}-${column}`}
+                          className="whitespace-normal break-words px-3 py-2 text-zinc-800 dark:text-zinc-200"
+                        >
+                          {formatCrnItemGridCell(column, row)}
+                        </td>
+                      ))}
                       <td className="whitespace-nowrap px-3 py-2">
                         <button
                           type="button"
