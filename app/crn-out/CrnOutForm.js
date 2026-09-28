@@ -57,7 +57,10 @@ const bookingsInFilterSearchLinkClassName =
   "shrink-0 self-end pb-1 text-xs font-medium text-sky-700 underline hover:text-sky-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-sky-400 dark:hover:text-sky-300";
 
 const showInvoicesButtonClassName =
-  "shrink-0 rounded bg-sky-100 px-4 py-2 text-sm font-medium text-sky-900 hover:bg-sky-200 dark:bg-sky-900/40 dark:text-sky-100 dark:hover:bg-sky-900/60";
+  "shrink-0 rounded bg-sky-100 px-4 py-2 text-sm font-medium text-sky-900 hover:bg-sky-200 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-sky-900/40 dark:text-sky-100 dark:hover:bg-sky-900/60";
+
+const BOOKINGS_IN_HIDDEN_COLUMN_KEYS = new Set(["stock_item_id"]);
+const CRN_ITEM_HIDDEN_COLUMN_KEYS = new Set(["invoice_id", "item_id"]);
 
 function normalizeRevenueAccountOptions(data) {
   if (!Array.isArray(data)) return [];
@@ -152,8 +155,6 @@ function formatBookingsInGridCell(column, value) {
 }
 
 const CRN_ITEM_COLUMN_KEYS = [
-  "invoice_id",
-  "item_id",
   "book_in_no",
   "invoice_no",
   "description",
@@ -284,7 +285,8 @@ async function printCreditNoteByNumber(crnNumber) {
       documentTitle: "Credit Note",
       documentNumberLabel: "CRN No",
       contentRowOffset: 2,
-      showBillNoSupplier: true,
+      centerDocumentTitle: true,
+      showSupplierOnBillTo: true,
     }
   );
 }
@@ -416,12 +418,18 @@ export function CrnOutForm() {
     String(otherItemPrice ?? "").trim() !== "";
 
   const bookingInColumns = useMemo(
-    () => getColumnKeys(bookingInRows),
+    () =>
+      getColumnKeys(bookingInRows).filter(
+        (key) => !BOOKINGS_IN_HIDDEN_COLUMN_KEYS.has(key)
+      ),
     [bookingInRows]
   );
 
   const crnItemColumns = useMemo(
-    () => mergeCrnItemColumnKeys(crnLineItems),
+    () =>
+      mergeCrnItemColumnKeys(crnLineItems).filter(
+        (key) => !CRN_ITEM_HIDDEN_COLUMN_KEYS.has(key)
+      ),
     [crnLineItems]
   );
 
@@ -820,35 +828,6 @@ export function CrnOutForm() {
 
       {showAfterRevenue ? (
         <>
-          <div className="mt-4 flex flex-wrap items-end gap-3">
-            <label className="flex w-full flex-col gap-1 sm:w-28">
-              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                crn_id
-              </span>
-              <input
-                type="text"
-                name="crn_id"
-                value={crnId}
-                readOnly
-                tabIndex={-1}
-                className={`${readOnlyInputClassName} w-full`}
-              />
-            </label>
-            <label className="flex w-full flex-col gap-1 sm:w-36">
-              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                crn_no
-              </span>
-              <input
-                type="text"
-                name="crn_no"
-                value={crnNo}
-                readOnly
-                tabIndex={-1}
-                className={`${readOnlyInputClassName} w-full`}
-              />
-            </label>
-          </div>
-
           {showComments ? (
             <label className="mt-4 flex w-full flex-col gap-1">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
@@ -989,20 +968,7 @@ export function CrnOutForm() {
             </div>
           </div>
 
-          <div className="mt-4 grid max-w-5xl grid-cols-1 items-end gap-3 sm:grid-cols-[7rem_7rem_minmax(10rem,1fr)_7rem_8rem_auto] sm:gap-x-3 sm:gap-y-3">
-            <label className="flex w-full flex-col gap-1 sm:w-auto">
-              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                stock_item_id
-              </span>
-              <input
-                type="text"
-                name="stock_item_id"
-                value={stockItemId}
-                readOnly
-                tabIndex={-1}
-                className={`${readOnlyInputClassName} w-full`}
-              />
-            </label>
+          <div className="mt-4 grid max-w-5xl grid-cols-1 items-end gap-3 sm:grid-cols-[7rem_minmax(10rem,1fr)_7rem_8rem_auto] sm:gap-x-3 sm:gap-y-3">
             <label className="flex w-full flex-col gap-1 sm:w-auto">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Book In No.
@@ -1089,43 +1055,16 @@ export function CrnOutForm() {
               onLoadError={(message) => setError(message)}
               className="flex w-full min-w-[12rem] max-w-xs flex-col gap-1"
             />
-            {customerId ? (
-              <button
-                type="button"
-                onClick={() => setShowInvoicesOpen(true)}
-                className={showInvoicesButtonClassName}
-              >
-                Show Invoices
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={() => setShowInvoicesOpen(true)}
+              disabled={!customerId}
+              className={showInvoicesButtonClassName}
+            >
+              Show Invoices
+            </button>
           </div>
           <div className="mt-3 flex max-w-5xl flex-wrap items-end gap-3">
-            <label className="flex w-full flex-col gap-1 sm:w-28">
-              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                invoice_id
-              </span>
-              <input
-                type="text"
-                name="invoice_id"
-                value={invoiceId}
-                readOnly
-                tabIndex={-1}
-                className={`${readOnlyInputClassName} w-full`}
-              />
-            </label>
-            <label className="flex w-full flex-col gap-1 sm:w-28">
-              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                item_id
-              </span>
-              <input
-                type="text"
-                name="item_id"
-                value={itemId}
-                readOnly
-                tabIndex={-1}
-                className={`${readOnlyInputClassName} w-full`}
-              />
-            </label>
             <label className="flex w-full flex-col gap-1 sm:w-36">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Invoice No.
