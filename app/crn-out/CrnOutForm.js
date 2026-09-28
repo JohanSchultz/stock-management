@@ -163,6 +163,12 @@ function parseNumeric(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function normalizeSingleRpcRow(data) {
+  if (Array.isArray(data)) return data[0] ?? null;
+  if (data && typeof data === "object") return data;
+  return null;
+}
+
 function parseRpcIntegerReturn(data) {
   if (typeof data === "number" && Number.isFinite(data)) {
     return Math.trunc(data);
@@ -173,14 +179,61 @@ function parseRpcIntegerReturn(data) {
       return Number.parseInt(trimmed, 10);
     }
   }
-  if (Array.isArray(data)) {
-    return parseRpcIntegerReturn(data[0]);
-  }
-  if (data && typeof data === "object") {
-    const fromRow = data.id ?? data.crn_id ?? data.crn_header_id;
+  const row = normalizeSingleRpcRow(data);
+  if (row && typeof row === "object") {
+    const fromRow = row.id ?? row.crn_id ?? row.crn_header_id;
     if (fromRow != null) return parseInteger(fromRow);
   }
   return parseInteger(data);
+}
+
+function getCrnNumberFromHeaderData(data) {
+  const row = normalizeSingleRpcRow(data);
+  if (!row || typeof row !== "object") return "";
+  const value = row.crn_number ?? row.crnNumber;
+  if (value == null || value === "") return "";
+  return String(value);
+}
+
+function normalizeCrnHeaderForInvoicePdf(headerData) {
+  const row = normalizeSingleRpcRow(headerData);
+  if (!row || typeof row !== "object") return headerData;
+  return {
+    ...row,
+    invoice_number:
+      row.invoice_number ?? row.crn_number ?? row.crnNumber ?? "",
+  };
+}
+
+async function printCreditNoteByNumber(crnNumber) {
+  const normalizedCrnNumber = String(crnNumber ?? "").trim();
+  if (!normalizedCrnNumber) {
+    throw new Error("Credit note number is missing.");
+  }
+
+  const supabase = await prepareSupabaseClient();
+  if (!supabase) return;
+
+  const [headerResult, linesResult] = await Promise.all([
+    supabase.rpc("pr_crn_out_header_by_invno", {
+      p_crn_number: normalizedCrnNumber,
+    }),
+    supabase.rpc("pr_crn_out_lines_by_invno", {
+      p_crn_number: normalizedCrnNumber,
+    }),
+  ]);
+
+  if (headerResult.error) throw headerResult.error;
+  if (linesResult.error) throw linesResult.error;
+
+  const { generateSampleInvoicePdf } = await import(
+    "@/lib/invoices/generateSampleInvoicePdf"
+  );
+  await generateSampleInvoicePdf(
+    normalizeCrnHeaderForInvoicePdf(headerResult.data),
+    linesResult.data,
+    normalizedCrnNumber
+  );
 }
 
 function getSelectedRevenueAccountText(revenueAccountId, revenueAccountOptions) {
@@ -290,6 +343,7 @@ export function CrnOutForm() {
   const [createConfirmOpen, setCreateConfirmOpen] = useState(false);
   const [creatingCreditNote, setCreatingCreditNote] = useState(false);
   const [crnId, setCrnId] = useState("");
+  const [crnNo, setCrnNo] = useState("");
   const [error, setError] = useState("");
 
   const showComments = Boolean(revenueAccountId && customerId);
@@ -449,7 +503,9 @@ export function CrnOutForm() {
     setCreateConfirmOpen(false);
   }
 
-  async function submitCreditNoteCreation() {
+  async function submitCreditNoteCreation({
+    generatePdfAfterCreate = false,
+  } = {}) {
     setCreatingCreditNote(true);
     setError("");
 
@@ -501,7 +557,10 @@ export function CrnOutForm() {
         throw new Error("Credit note header id was not returned.");
       }
 
+      const createdCrnNumber = getCrnNumberFromHeaderData(headerData);
+
       setCrnId(String(newCrnHeaderId));
+      setCrnNo(createdCrnNumber);
 
       for (const line of crnLineItems) {
         const { error: lineError } = await supabase.rpc(
@@ -512,6 +571,16 @@ export function CrnOutForm() {
       }
 
       setCreateConfirmOpen(false);
+
+      if (generatePdfAfterCreate) {
+        try {
+          await printCreditNoteByNumber(createdCrnNumber);
+        } catch (printErr) {
+          setError(
+            printErr.message ?? "Failed to generate credit note PDF"
+          );
+        }
+      }
     } catch (err) {
       setError(err.message ?? "Failed to create credit note");
     } finally {
@@ -520,7 +589,7 @@ export function CrnOutForm() {
   }
 
   function handleCreateCreditNoteOnly() {
-    void submitCreditNoteCreation();
+    void submitCreditNoteCreation({ generatePdfAfterCreate: true });
   }
 
   function handleCreateCreditNoteAndPrint() {
@@ -600,6 +669,15 @@ export function CrnOutForm() {
         type="text"
         name="crn_id"
         value={crnId}
+        readOnly
+        tabIndex={-1}
+        aria-hidden="true"
+        className={`${readOnlyInputClassName} invisible absolute h-0 w-0 overflow-hidden border-0 p-0`}
+      />
+      <input
+        type="text"
+        name="crn_no"
+        value={crnNo}
         readOnly
         tabIndex={-1}
         aria-hidden="true"
@@ -1053,7 +1131,7 @@ export function CrnOutForm() {
             <button
               type="button"
               onClick={handleCreateCreditNoteClick}
-              disabled={creatingCreditNote}
+              disabled={creatingCreditNote || crnLineItems.length === 0}
               className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               CREATE CREDIT NOTE
