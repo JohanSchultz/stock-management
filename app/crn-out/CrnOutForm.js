@@ -710,24 +710,34 @@ export function CrnOutForm() {
 
   return (
     <div className="mt-6 max-w-6xl">
-      <input
-        type="text"
-        name="crn_id"
-        value={crnId}
-        readOnly
-        tabIndex={-1}
-        aria-hidden="true"
-        className={`${readOnlyInputClassName} invisible absolute h-0 w-0 overflow-hidden border-0 p-0`}
-      />
-      <input
-        type="text"
-        name="crn_no"
-        value={crnNo}
-        readOnly
-        tabIndex={-1}
-        aria-hidden="true"
-        className={`${readOnlyInputClassName} invisible absolute h-0 w-0 overflow-hidden border-0 p-0`}
-      />
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <label className="flex w-full flex-col gap-1 sm:w-28">
+          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            crn_id
+          </span>
+          <input
+            type="text"
+            name="crn_id"
+            value={crnId}
+            readOnly
+            tabIndex={-1}
+            className={`${readOnlyInputClassName} w-full`}
+          />
+        </label>
+        <label className="flex w-full flex-col gap-1 sm:w-36">
+          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            crn_no
+          </span>
+          <input
+            type="text"
+            name="crn_no"
+            value={crnNo}
+            readOnly
+            tabIndex={-1}
+            className={`${readOnlyInputClassName} w-full`}
+          />
+        </label>
+      </div>
       <label className="flex w-full max-w-2xl flex-col gap-1">
         <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
           Revenue Account
@@ -1011,24 +1021,32 @@ export function CrnOutForm() {
             ) : null}
           </div>
           <div className="mt-3 flex max-w-5xl flex-wrap items-end gap-3">
-            <input
-              type="text"
-              name="invoice_id"
-              value={invoiceId}
-              readOnly
-              tabIndex={-1}
-              aria-hidden="true"
-              className={`${readOnlyInputClassName} invisible h-0 w-0 min-w-0 shrink-0 border-0 p-0`}
-            />
-            <input
-              type="text"
-              name="item_id"
-              value={itemId}
-              readOnly
-              tabIndex={-1}
-              aria-hidden="true"
-              className={`${readOnlyInputClassName} invisible h-0 w-0 min-w-0 shrink-0 border-0 p-0`}
-            />
+            <label className="flex w-full flex-col gap-1 sm:w-28">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                invoice_id
+              </span>
+              <input
+                type="text"
+                name="invoice_id"
+                value={invoiceId}
+                readOnly
+                tabIndex={-1}
+                className={`${readOnlyInputClassName} w-full`}
+              />
+            </label>
+            <label className="flex w-full flex-col gap-1 sm:w-28">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                item_id
+              </span>
+              <input
+                type="text"
+                name="item_id"
+                value={itemId}
+                readOnly
+                tabIndex={-1}
+                className={`${readOnlyInputClassName} w-full`}
+              />
+            </label>
             <label className="flex w-full flex-col gap-1 sm:w-36">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Invoice No.
