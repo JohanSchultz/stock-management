@@ -881,7 +881,7 @@ export function CrnOutForm() {
 
           </div>
 
-          <h2 className="mt-6 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          <h2 className="mt-6 text-sm font-bold text-zinc-700 dark:text-zinc-300">
             Diverse Items
           </h2>
           <div className="mt-3 flex max-w-5xl flex-wrap items-end gap-3">
