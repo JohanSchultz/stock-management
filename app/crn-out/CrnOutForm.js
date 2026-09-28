@@ -232,7 +232,13 @@ async function printCreditNoteByNumber(crnNumber) {
   await generateSampleInvoicePdf(
     normalizeCrnHeaderForInvoicePdf(headerResult.data),
     linesResult.data,
-    normalizedCrnNumber
+    normalizedCrnNumber,
+    {
+      documentTitle: "Credit Note",
+      documentNumberLabel: "CRN No",
+      contentRowOffset: 2,
+      showBillNoSupplier: true,
+    }
   );
 }
 
@@ -346,6 +352,7 @@ export function CrnOutForm() {
   const [crnNo, setCrnNo] = useState("");
   const [error, setError] = useState("");
 
+  const showAfterRevenue = Boolean(revenueAccountId);
   const showComments = Boolean(revenueAccountId && customerId);
   const showBookingsInGrid = showComments;
   const showTopAddButton = String(bookInNo ?? "").trim() !== "";
@@ -503,6 +510,39 @@ export function CrnOutForm() {
     setCreateConfirmOpen(false);
   }
 
+  function initializePage() {
+    setRevenueAccountId("");
+    setCustomerId("");
+    setCustomerLabel("");
+    setShowInvoicesOpen(false);
+    setFilterSupplierId("");
+    setFilterFromDate(currentMonthStartIsoDate());
+    setFilterToDate(currentMonthEndIsoDate());
+    setFilterBookingInNumber("");
+    setBookingInRows([]);
+    setBookingsInGridLoading(false);
+    setComments("");
+    clearBookingInDetailFields({
+      setSelectedBookingInRowKey,
+      setBookInNo,
+      setProduct,
+      setQty,
+      setUnitPrice,
+    });
+    setInvoiceId("");
+    setItemId("");
+    setInvoiceNo("");
+    setOtherItem("");
+    setOtherItemQty("");
+    setOtherItemQtyDisabled(false);
+    setOtherItemPrice("");
+    setCrnLineItems([]);
+    setCrnId("");
+    setCrnNo("");
+    setCreateConfirmOpen(false);
+    setError("");
+  }
+
   async function submitCreditNoteCreation({
     generatePdfAfterCreate = false,
   } = {}) {
@@ -572,14 +612,19 @@ export function CrnOutForm() {
 
       setCreateConfirmOpen(false);
 
+      let printErrorMessage = "";
       if (generatePdfAfterCreate) {
         try {
           await printCreditNoteByNumber(createdCrnNumber);
         } catch (printErr) {
-          setError(
-            printErr.message ?? "Failed to generate credit note PDF"
-          );
+          printErrorMessage =
+            printErr.message ?? "Failed to generate credit note PDF";
         }
+      }
+
+      initializePage();
+      if (printErrorMessage) {
+        setError(printErrorMessage);
       }
     } catch (err) {
       setError(err.message ?? "Failed to create credit note");
@@ -589,11 +634,11 @@ export function CrnOutForm() {
   }
 
   function handleCreateCreditNoteOnly() {
-    void submitCreditNoteCreation({ generatePdfAfterCreate: true });
+    void submitCreditNoteCreation();
   }
 
   function handleCreateCreditNoteAndPrint() {
-    void submitCreditNoteCreation();
+    void submitCreditNoteCreation({ generatePdfAfterCreate: true });
   }
 
   function handleCreditEntireInvoiceFromModal({
@@ -707,25 +752,6 @@ export function CrnOutForm() {
         </select>
       </label>
 
-      <div className="mt-4 flex flex-wrap items-end gap-3">
-        <CustomerSelect
-          value={customerId}
-          onChange={handleCustomerChange}
-          onSelectionLabelChange={handleCustomerSelectionChange}
-          onLoadError={(message) => setError(message)}
-          className="flex w-full min-w-[12rem] max-w-xs flex-col gap-1"
-        />
-        {customerId ? (
-          <button
-            type="button"
-            onClick={() => setShowInvoicesOpen(true)}
-            className={showInvoicesButtonClassName}
-          >
-            Show Invoices
-          </button>
-        ) : null}
-      </div>
-
       <ShowInvoicesModal
         open={showInvoicesOpen}
         onClose={() => setShowInvoicesOpen(false)}
@@ -760,8 +786,10 @@ export function CrnOutForm() {
         </label>
       ) : null}
 
-      {showBookingsInGrid ? (
+      {showAfterRevenue ? (
         <>
+          {showBookingsInGrid ? (
+            <>
           <h2 className="mt-6 text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Bookings In
           </h2>
@@ -958,10 +986,30 @@ export function CrnOutForm() {
             </div>
 
           </div>
+            </>
+          ) : null}
 
           <h2 className="mt-6 text-sm font-bold text-zinc-700 dark:text-zinc-300">
             Diverse Items
           </h2>
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <CustomerSelect
+              value={customerId}
+              onChange={handleCustomerChange}
+              onSelectionLabelChange={handleCustomerSelectionChange}
+              onLoadError={(message) => setError(message)}
+              className="flex w-full min-w-[12rem] max-w-xs flex-col gap-1"
+            />
+            {customerId ? (
+              <button
+                type="button"
+                onClick={() => setShowInvoicesOpen(true)}
+                className={showInvoicesButtonClassName}
+              >
+                Show Invoices
+              </button>
+            ) : null}
+          </div>
           <div className="mt-3 flex max-w-5xl flex-wrap items-end gap-3">
             <input
               type="text"
