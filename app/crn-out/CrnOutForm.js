@@ -120,6 +120,7 @@ function getColumnKeys(rows) {
 function formatColumnHeader(key) {
   if (key === "id" || key === "booking_in_id") return "Book In Number";
   if (key === "supplier") return "Supplier";
+  if (key === "stock_item_id") return "Stock Item Id";
   if (BOOK_IN_DATE_COLUMN_KEYS.has(key)) return "Book In Date";
   return key.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
@@ -181,6 +182,7 @@ function mergeCrnItemColumnKeys(rows) {
 }
 
 function formatCrnItemColumnHeader(key) {
+  if (key === "item_id") return "Item Id";
   if (key === "book_in_no") return "Book In No.";
   if (key === "invoice_no") return "Invoice No.";
   if (key === "unit_price") return "(Unit) Price";
@@ -331,6 +333,12 @@ function getBookInNumberFromRow(row) {
   return String(value);
 }
 
+function getStockItemIdFromRow(row) {
+  const value = row.stock_item_id ?? row.stockItemId;
+  if (value == null || value === "") return "";
+  return String(value);
+}
+
 function getProductTextFromRow(row) {
   if (row.item != null && row.item !== "") return String(row.item);
   if (row.product != null && row.product !== "") return String(row.product);
@@ -354,6 +362,7 @@ function getUnitPriceFromRow(row) {
 
 function clearBookingInDetailFields(setters) {
   setters.setSelectedBookingInRowKey(null);
+  setters.setStockItemId("");
   setters.setBookInNo("");
   setters.setProduct("");
   setters.setQty("");
@@ -379,6 +388,7 @@ export function CrnOutForm() {
   const [bookingsInGridLoading, setBookingsInGridLoading] = useState(false);
   const [comments, setComments] = useState("");
   const [selectedBookingInRowKey, setSelectedBookingInRowKey] = useState(null);
+  const [stockItemId, setStockItemId] = useState("");
   const [bookInNo, setBookInNo] = useState("");
   const [product, setProduct] = useState("");
   const [qty, setQty] = useState("");
@@ -398,8 +408,8 @@ export function CrnOutForm() {
   const [error, setError] = useState("");
 
   const showAfterRevenue = Boolean(revenueAccountId);
-  const showComments = Boolean(revenueAccountId && customerId);
-  const showBookingsInGrid = showComments;
+  const showComments = showAfterRevenue;
+  const showBookingsInGrid = showAfterRevenue;
   const showTopAddButton = String(bookInNo ?? "").trim() !== "";
   const showBottomAddButton =
     String(otherItem ?? "").trim() !== "" &&
@@ -436,6 +446,7 @@ export function CrnOutForm() {
   const loadBookingsInGrid = useCallback(async () => {
     clearBookingInDetailFields({
       setSelectedBookingInRowKey,
+      setStockItemId,
       setBookInNo,
       setProduct,
       setQty,
@@ -495,6 +506,7 @@ export function CrnOutForm() {
       setFilterBookingInNumber("");
       clearBookingInDetailFields({
         setSelectedBookingInRowKey,
+        setStockItemId,
         setBookInNo,
         setProduct,
         setQty,
@@ -512,6 +524,7 @@ export function CrnOutForm() {
 
   function handleBookingInRowClick(row) {
     setSelectedBookingInRowKey(row.rowKey);
+    setStockItemId(getStockItemIdFromRow(row));
     setBookInNo(getBookInNumberFromRow(row));
     setProduct(getProductTextFromRow(row));
     setQty(getQtyFromRow(row));
@@ -528,7 +541,7 @@ export function CrnOutForm() {
       {
         rowKey: `crn-line-${current.length}-${Date.now()}`,
         invoice_id: "",
-        item_id: "",
+        item_id: String(stockItemId ?? "").trim(),
         book_in_no: normalizedBookInNo,
         invoice_no: "",
         description: product,
@@ -539,6 +552,7 @@ export function CrnOutForm() {
 
     clearBookingInDetailFields({
       setSelectedBookingInRowKey,
+      setStockItemId,
       setBookInNo,
       setProduct,
       setQty,
@@ -574,6 +588,7 @@ export function CrnOutForm() {
     setComments("");
     clearBookingInDetailFields({
       setSelectedBookingInRowKey,
+      setStockItemId,
       setBookInNo,
       setProduct,
       setQty,
@@ -974,7 +989,20 @@ export function CrnOutForm() {
             </div>
           </div>
 
-          <div className="mt-4 grid max-w-5xl grid-cols-1 items-end gap-3 sm:grid-cols-[7rem_minmax(10rem,1fr)_7rem_8rem_auto] sm:gap-x-3 sm:gap-y-3">
+          <div className="mt-4 grid max-w-5xl grid-cols-1 items-end gap-3 sm:grid-cols-[7rem_7rem_minmax(10rem,1fr)_7rem_8rem_auto] sm:gap-x-3 sm:gap-y-3">
+            <label className="flex w-full flex-col gap-1 sm:w-auto">
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                stock_item_id
+              </span>
+              <input
+                type="text"
+                name="stock_item_id"
+                value={stockItemId}
+                readOnly
+                tabIndex={-1}
+                className={`${readOnlyInputClassName} w-full`}
+              />
+            </label>
             <label className="flex w-full flex-col gap-1 sm:w-auto">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Book In No.
