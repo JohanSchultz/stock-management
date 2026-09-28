@@ -881,33 +881,28 @@ export function CrnOutForm() {
 
           </div>
 
+          <h2 className="mt-6 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            Diverse Items
+          </h2>
           <div className="mt-3 flex max-w-5xl flex-wrap items-end gap-3">
-            <label className="flex w-full flex-col gap-1 sm:w-28">
-              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                invoice_id
-              </span>
-              <input
-                type="text"
-                name="invoice_id"
-                value={invoiceId}
-                readOnly
-                tabIndex={-1}
-                className={`${readOnlyInputClassName} w-full`}
-              />
-            </label>
-            <label className="flex w-full flex-col gap-1 sm:w-28">
-              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                item_id
-              </span>
-              <input
-                type="text"
-                name="item_id"
-                value={itemId}
-                readOnly
-                tabIndex={-1}
-                className={`${readOnlyInputClassName} w-full`}
-              />
-            </label>
+            <input
+              type="text"
+              name="invoice_id"
+              value={invoiceId}
+              readOnly
+              tabIndex={-1}
+              aria-hidden="true"
+              className={`${readOnlyInputClassName} invisible h-0 w-0 min-w-0 shrink-0 border-0 p-0`}
+            />
+            <input
+              type="text"
+              name="item_id"
+              value={itemId}
+              readOnly
+              tabIndex={-1}
+              aria-hidden="true"
+              className={`${readOnlyInputClassName} invisible h-0 w-0 min-w-0 shrink-0 border-0 p-0`}
+            />
             <label className="flex w-full flex-col gap-1 sm:w-36">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Invoice No.
@@ -990,12 +985,6 @@ export function CrnOutForm() {
             <table className="w-full table-auto text-left text-sm">
               <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
                 <tr>
-                  <th className="px-3 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                    invoice_id
-                  </th>
-                  <th className="px-3 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                    item_id
-                  </th>
                   <th className="px-3 py-2 align-bottom font-medium leading-tight text-zinc-700 dark:text-zinc-300">
                     <span className="block whitespace-normal">
                       Book In No.
@@ -1020,7 +1009,7 @@ export function CrnOutForm() {
                 {crnLineItems.length === 0 ? (
                   <tr key="crn-items-empty">
                     <td
-                      colSpan={7}
+                      colSpan={5}
                       className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
                     >
                       No items added yet.
@@ -1032,12 +1021,6 @@ export function CrnOutForm() {
                       key={row.rowKey}
                       className="border-b border-zinc-100 last:border-b-0 dark:border-zinc-800"
                     >
-                      <td className="whitespace-normal break-all px-3 py-2 text-zinc-800 dark:text-zinc-200">
-                        {row.invoice_id ?? ""}
-                      </td>
-                      <td className="whitespace-normal break-all px-3 py-2 text-zinc-800 dark:text-zinc-200">
-                        {row.item_id ?? ""}
-                      </td>
                       <td className="whitespace-normal px-3 py-2 text-zinc-800 dark:text-zinc-200">
                         {row.book_in_no || row.invoice_no || ""}
                       </td>
