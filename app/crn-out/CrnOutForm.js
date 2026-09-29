@@ -1073,8 +1073,9 @@ export function CrnOutForm() {
                 type="text"
                 name="invoice_no"
                 value={invoiceNo}
-                onChange={(e) => setInvoiceNo(e.target.value)}
-                className={`${inputClassName} w-full`}
+                readOnly
+                tabIndex={-1}
+                className={`${readOnlyInputClassName} w-full`}
               />
             </label>
             <label className="flex min-w-[10rem] flex-1 flex-col gap-1">
