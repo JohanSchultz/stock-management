@@ -346,14 +346,18 @@ export function StockItemForm() {
 
   async function handleStockCodeLookup() {
     const searchCode = stockCode.trim();
-    if (!searchCode) return;
-
     const supabase = createClient();
     await runItemLookup(async () => {
-      const { data, error: rpcError } = await supabase.rpc(
-        "pr_stock_item_all_like_stockcode",
-        { p_stock_code: searchCode }
-      );
+      if (searchCode) {
+        const { data, error: rpcError } = await supabase.rpc(
+          "pr_stock_item_all_like_stockcode",
+          { p_stock_code: searchCode }
+        );
+        if (rpcError) throw rpcError;
+        return data;
+      }
+
+      const { data, error: rpcError } = await supabase.rpc("pr_stock_item_all");
       if (rpcError) throw rpcError;
       return data;
     }, "Failed to search stock items by stock code");
