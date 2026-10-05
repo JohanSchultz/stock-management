@@ -133,6 +133,11 @@ function parseInteger(value) {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
+function isValidInvoiceDateRange(from, to) {
+  if (!from || !to) return false;
+  return from <= to;
+}
+
 function getInvoiceNumberFromRow(row) {
   const value = row.invoice_number ?? row.invoiceNumber;
   if (value == null || value === "") return "";
@@ -460,6 +465,12 @@ export function ShowInvoicesModal({
     }
   }, [customerId, fromDate, toDate, onError]);
 
+  useEffect(() => {
+    if (!open) return;
+    if (!isValidInvoiceDateRange(fromDate, toDate)) return;
+    void loadInvoices();
+  }, [open, fromDate, toDate, loadInvoices]);
+
   function handleInvoiceRowClick(row) {
     const invoiceNumber = getInvoiceNumberFromRow(row);
     setSelectedInvoiceRowKey(row.rowKey);
@@ -595,8 +606,10 @@ export function ShowInvoicesModal({
                 type="button"
                 onClick={loadInvoices}
                 disabled={invoicesLoading}
-                className={filterSearchLinkClassName}
+                className={`${filterSearchLinkClassName} invisible`}
                 aria-label="Search invoices"
+                aria-hidden="true"
+                tabIndex={-1}
               >
                 {">>"}
               </button>

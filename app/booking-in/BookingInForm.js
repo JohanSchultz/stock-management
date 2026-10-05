@@ -1822,258 +1822,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
           </>
         ) : null}
 
-        {isOrdersIn && !hideExpandableSections ? (
-          <div className="overflow-hidden rounded-lg border border-zinc-300 bg-zinc-300 dark:border-zinc-700 dark:bg-zinc-900">
-            <button
-              type="button"
-              onClick={handleItemsSectionToggle}
-              aria-expanded={itemsExpanded}
-              disabled={!canExpandItemsSection && !itemsExpanded}
-              className={`flex w-full items-center rounded-t-lg bg-zinc-300 px-3 py-2 text-left text-sm font-medium text-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 ${
-                canExpandItemsSection || itemsExpanded
-                  ? "hover:bg-zinc-400 dark:hover:bg-zinc-800"
-                  : "cursor-not-allowed opacity-60"
-              }`}
-            >
-              <span
-                className={`mr-2 inline-block text-xs text-zinc-500 transition-transform dark:text-zinc-400 ${
-                  itemsExpanded ? "rotate-90" : ""
-                }`}
-                aria-hidden
-              >
-                ▶
-              </span>
-              Items
-            </button>
-            {itemsExpanded ? (
-              <div className="flex flex-col gap-4 border-t border-zinc-300 bg-zinc-300 p-4 dark:border-zinc-700 dark:bg-zinc-900">
-                <input
-                  type="text"
-                  name="stock_item_id"
-                  value={stockItemId}
-                  readOnly
-                  tabIndex={-1}
-                  aria-hidden="true"
-                  className="hidden"
-                />
-                <input
-                  type="text"
-                  name="order_item_id"
-                  value={orderItemId}
-                  readOnly
-                  tabIndex={-1}
-                  aria-hidden="true"
-                  className="hidden"
-                />
-
-                <StockItemLookupFields
-                  stockCode={stockCode}
-                  description={description}
-                  onStockCodeChange={setStockCode}
-                  onDescriptionChange={setDescription}
-                  onSelect={handleStockItemSelect}
-                  onClear={() => {
-                    setStockItemId("");
-                    setUnitPrice("");
-                  }}
-                  stockCodeRequired={!isOrdersIn}
-                />
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-                  <label className="flex flex-col gap-1">
-                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                      Qty Delivered
-                    </span>
-                    <input
-                      type="number"
-                      step="any"
-                      inputMode="decimal"
-                      value={qtyDelivered}
-                      readOnly
-                      tabIndex={-1}
-                      className={`${readOnlyInputClassName} w-full`}
-                    />
-                  </label>
-
-                  <label className="flex flex-col gap-1">
-                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                      Qty On Order
-                      <RequiredMarker />
-                    </span>
-                    <input
-                      type="number"
-                      step="any"
-                      inputMode="decimal"
-                      min="0"
-                      value={quantity}
-                      onChange={(e) =>
-                        handleOrdersInQuantityChange(e.target.value)
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === "-" || e.key === "Subtract") {
-                          e.preventDefault();
-                        }
-                      }}
-                      className={`${inputClassName} w-full`}
-                    />
-                  </label>
-
-                  <label className="flex flex-col gap-1">
-                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                      Unit Price
-                    </span>
-                    <input
-                      type="number"
-                      step="any"
-                      inputMode="decimal"
-                      value={unitPrice}
-                      onChange={(e) => setUnitPrice(e.target.value)}
-                      className={`${inputClassName} w-full`}
-                    />
-                  </label>
-
-                  <label className="flex flex-col gap-1">
-                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                      Total Price
-                    </span>
-                    <input
-                      type="text"
-                      value={totalPrice}
-                      readOnly
-                      tabIndex={-1}
-                      className={`${readOnlyInputClassName} w-full`}
-                    />
-                  </label>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={handleNewOrderItem}
-                    className="rounded bg-sky-200 px-4 py-2 text-sm font-medium text-sky-900 hover:bg-sky-300 dark:bg-sky-900/40 dark:text-sky-100 dark:hover:bg-sky-900/60"
-                  >
-                    New
-                  </button>
-                  {!orderItemEditMode && (
-                    <button
-                      type="button"
-                      onClick={handleAdd}
-                      disabled={loading || !isAddFormValid()}
-                      className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Add
-                    </button>
-                  )}
-                  {orderItemEditMode && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={handleAmend}
-                        disabled={loading || !isAmendFormValid()}
-                        className="rounded bg-orange-200 px-4 py-2 text-sm font-medium text-orange-900 hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-100 dark:hover:bg-orange-900/60"
-                      >
-                        Amend
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleRemoveOrderItem}
-                        disabled={loading}
-                        className="rounded bg-red-200 px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60"
-                      >
-                        Remove
-                      </button>
-                    </>
-                  )}
-                </div>
-
-                <div className="overflow-hidden rounded-lg border border-zinc-200 bg-sky-50 dark:border-zinc-800 dark:bg-sky-900/20">
-                  <table className="w-full text-left text-sm">
-                    <thead className="border-b border-zinc-200 bg-sky-100 dark:border-zinc-800 dark:bg-sky-900/30">
-                      <tr>
-                        <th className="hidden px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                          id
-                        </th>
-                        <th className="hidden px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                          stock_item_id
-                        </th>
-                        <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                          Stock Code
-                        </th>
-                        <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                          Description
-                        </th>
-                        <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                          Qty On Order
-                        </th>
-                        <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                          Qty Delivered
-                        </th>
-                        <th className="hidden px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
-                          unit_price
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {orderItemsGridLoading ? (
-                        <tr>
-                          <td
-                            colSpan={7}
-                            className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
-                          >
-                            Loading…
-                          </td>
-                        </tr>
-                      ) : orderBookingInRows.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan={7}
-                            className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
-                          >
-                            No order items found.
-                          </td>
-                        </tr>
-                      ) : (
-                        orderBookingInRows.map((row) => (
-                          <tr
-                            key={row.rowKey}
-                            onClick={() => handleOrderItemRowClick(row)}
-                            className={`cursor-pointer border-b border-zinc-100 bg-sky-50 last:border-b-0 hover:bg-sky-100 dark:border-zinc-800 dark:bg-sky-900/20 dark:hover:bg-sky-900/30 ${
-                              selectedOrderItemId === row.id
-                                ? "bg-sky-100 dark:bg-sky-900/30"
-                                : ""
-                            }`}
-                          >
-                            <td className="hidden px-4 py-2 text-zinc-800 dark:text-zinc-200">
-                              {row.id ?? ""}
-                            </td>
-                            <td className="hidden px-4 py-2 text-zinc-800 dark:text-zinc-200">
-                              {row.stock_item_id ?? ""}
-                            </td>
-                            <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
-                              {row.stock_code}
-                            </td>
-                            <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
-                              {row.descr}
-                            </td>
-                            <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
-                              {row.qty_on_order ?? ""}
-                            </td>
-                            <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
-                              {row.qty_delivered ?? ""}
-                            </td>
-                            <td className="hidden px-4 py-2 text-zinc-800 dark:text-zinc-200">
-                              {row.unit_price ?? ""}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ) : (
+        {!isOrdersIn ? (
           <>
             <StockItemLookupFields
               stockCode={stockCode}
@@ -2354,7 +2103,11 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
             disabled={loading || !isSaveFormValid()}
             className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "Saving…" : "Save"}
+            {loading
+              ? "Saving…"
+              : isOrdersIn
+                ? "Create Order Header"
+                : "Save"}
           </button>
         )}
 
@@ -2757,6 +2510,259 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
           </tbody>
         </table>
       </div>
+      {isOrdersIn && !hideExpandableSections ? (
+          <div className="mt-6 overflow-hidden rounded-lg border border-zinc-300 bg-zinc-300 dark:border-zinc-700 dark:bg-zinc-900">
+            <button
+              type="button"
+              onClick={handleItemsSectionToggle}
+              aria-expanded={itemsExpanded}
+              disabled={!canExpandItemsSection && !itemsExpanded}
+              className={`flex w-full items-center rounded-t-lg bg-zinc-300 px-3 py-2 text-left text-sm font-medium text-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 ${
+                canExpandItemsSection || itemsExpanded
+                  ? "hover:bg-zinc-400 dark:hover:bg-zinc-800"
+                  : "cursor-not-allowed opacity-60"
+              }`}
+            >
+              <span
+                className={`mr-2 inline-block text-xs text-zinc-500 transition-transform dark:text-zinc-400 ${
+                  itemsExpanded ? "rotate-90" : ""
+                }`}
+                aria-hidden
+              >
+                ▶
+              </span>
+              Items
+            </button>
+            {itemsExpanded ? (
+              <div className="flex flex-col gap-4 border-t border-zinc-300 bg-zinc-300 p-4 dark:border-zinc-700 dark:bg-zinc-900">
+                <input
+                  type="text"
+                  name="stock_item_id"
+                  value={stockItemId}
+                  readOnly
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  className="hidden"
+                />
+                <input
+                  type="text"
+                  name="order_item_id"
+                  value={orderItemId}
+                  readOnly
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  className="hidden"
+                />
+
+                <StockItemLookupFields
+                  stockCode={stockCode}
+                  description={description}
+                  onStockCodeChange={setStockCode}
+                  onDescriptionChange={setDescription}
+                  onSelect={handleStockItemSelect}
+                  onClear={() => {
+                    setStockItemId("");
+                    setUnitPrice("");
+                  }}
+                  stockCodeRequired={!isOrdersIn}
+                />
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                      Qty Delivered
+                    </span>
+                    <input
+                      type="number"
+                      step="any"
+                      inputMode="decimal"
+                      value={qtyDelivered}
+                      readOnly
+                      tabIndex={-1}
+                      className={`${readOnlyInputClassName} w-full`}
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                      Qty On Order
+                      <RequiredMarker />
+                    </span>
+                    <input
+                      type="number"
+                      step="any"
+                      inputMode="decimal"
+                      min="0"
+                      value={quantity}
+                      onChange={(e) =>
+                        handleOrdersInQuantityChange(e.target.value)
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "-" || e.key === "Subtract") {
+                          e.preventDefault();
+                        }
+                      }}
+                      className={`${inputClassName} w-full`}
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                      Unit Price
+                    </span>
+                    <input
+                      type="number"
+                      step="any"
+                      inputMode="decimal"
+                      value={unitPrice}
+                      onChange={(e) => setUnitPrice(e.target.value)}
+                      className={`${inputClassName} w-full`}
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                      Total Price
+                    </span>
+                    <input
+                      type="text"
+                      value={totalPrice}
+                      readOnly
+                      tabIndex={-1}
+                      className={`${readOnlyInputClassName} w-full`}
+                    />
+                  </label>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleNewOrderItem}
+                    className="rounded bg-sky-200 px-4 py-2 text-sm font-medium text-sky-900 hover:bg-sky-300 dark:bg-sky-900/40 dark:text-sky-100 dark:hover:bg-sky-900/60"
+                  >
+                    New
+                  </button>
+                  {!orderItemEditMode && (
+                    <button
+                      type="button"
+                      onClick={handleAdd}
+                      disabled={loading || !isAddFormValid()}
+                      className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Add
+                    </button>
+                  )}
+                  {orderItemEditMode && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleAmend}
+                        disabled={loading || !isAmendFormValid()}
+                        className="rounded bg-orange-200 px-4 py-2 text-sm font-medium text-orange-900 hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-100 dark:hover:bg-orange-900/60"
+                      >
+                        Amend
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRemoveOrderItem}
+                        disabled={loading}
+                        className="rounded bg-red-200 px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60"
+                      >
+                        Remove
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                <div className="overflow-hidden rounded-lg border border-zinc-200 bg-sky-50 dark:border-zinc-800 dark:bg-sky-900/20">
+                  <table className="w-full text-left text-sm">
+                    <thead className="border-b border-zinc-200 bg-sky-100 dark:border-zinc-800 dark:bg-sky-900/30">
+                      <tr>
+                        <th className="hidden px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                          id
+                        </th>
+                        <th className="hidden px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                          stock_item_id
+                        </th>
+                        <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                          Stock Code
+                        </th>
+                        <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                          Description
+                        </th>
+                        <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                          Qty On Order
+                        </th>
+                        <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                          Qty Delivered
+                        </th>
+                        <th className="hidden px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                          unit_price
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {orderItemsGridLoading ? (
+                        <tr>
+                          <td
+                            colSpan={7}
+                            className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
+                          >
+                            Loading…
+                          </td>
+                        </tr>
+                      ) : orderBookingInRows.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={7}
+                            className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
+                          >
+                            No order items found.
+                          </td>
+                        </tr>
+                      ) : (
+                        orderBookingInRows.map((row) => (
+                          <tr
+                            key={row.rowKey}
+                            onClick={() => handleOrderItemRowClick(row)}
+                            className={`cursor-pointer border-b border-zinc-100 bg-sky-50 last:border-b-0 hover:bg-sky-100 dark:border-zinc-800 dark:bg-sky-900/20 dark:hover:bg-sky-900/30 ${
+                              selectedOrderItemId === row.id
+                                ? "bg-sky-100 dark:bg-sky-900/30"
+                                : ""
+                            }`}
+                          >
+                            <td className="hidden px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                              {row.id ?? ""}
+                            </td>
+                            <td className="hidden px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                              {row.stock_item_id ?? ""}
+                            </td>
+                            <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                              {row.stock_code}
+                            </td>
+                            <td className="px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                              {row.descr}
+                            </td>
+                            <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
+                              {row.qty_on_order ?? ""}
+                            </td>
+                            <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
+                              {row.qty_delivered ?? ""}
+                            </td>
+                            <td className="hidden px-4 py-2 text-zinc-800 dark:text-zinc-200">
+                              {row.unit_price ?? ""}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+          </div>
+      ) : null}
+
 
       {!isOrdersIn && !hideExpandableSections ? (
         <div className="mt-6 overflow-hidden rounded-lg border border-zinc-200 bg-yellow-100 dark:border-zinc-800 dark:bg-yellow-900/30">
