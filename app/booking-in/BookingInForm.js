@@ -1941,7 +1941,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
               </label>
             </div>
           </>
-        )}
+        ) : null}
 
         {!isOrdersIn ? (
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
