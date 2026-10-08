@@ -2233,7 +2233,7 @@ export function BookingOutForm({ variant = "booking-out" } = {}) {
               disabled={loading || !isChangeFormValid() || !bookingOutId}
               className="rounded bg-orange-200 px-4 py-2 text-sm font-medium text-orange-900 hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-100 dark:hover:bg-orange-900/60"
             >
-              {loading ? "Saving…" : "Change"}
+              {loading ? "Saving…" : isOrdersOut ? "Change" : "Post"}
             </button>
             {!ordersNotFullyDeliveredSelected || isOrdersOut ? (
               <button

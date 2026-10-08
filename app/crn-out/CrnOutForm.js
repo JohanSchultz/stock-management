@@ -6,6 +6,7 @@ import { ShowInvoicesModal } from "./ShowInvoicesModal";
 import {
   formatGridQtyOrUnitPrice,
   isQtyOrUnitPriceColumnKey,
+  parseGridNumber,
 } from "@/lib/format/gridNumberFormat";
 import {
   currentMonthEndIsoDate,
@@ -205,10 +206,7 @@ function parseInteger(value) {
 }
 
 function parseNumeric(value) {
-  if (value == null || value === "") return null;
-  const normalized = String(value).replace(/,/g, "").trim();
-  const parsed = Number.parseFloat(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
+  return parseGridNumber(value);
 }
 
 function normalizeSingleRpcRow(data) {
