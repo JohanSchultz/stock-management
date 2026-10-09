@@ -110,9 +110,11 @@ function getColumnKeys(rows) {
   return keys;
 }
 
+const INVOICES_GRID_HIDDEN_COLUMN_KEYS = new Set(["customer_id", "customerid"]);
+
+const LINE_ITEMS_GRID_HIDDEN_COLUMN_KEYS = new Set(["id", "stock_item_id"]);
+
 const LINE_ITEM_GRID_COLUMN_KEYS = [
-  "id",
-  "stock_item_id",
   "stock_code",
   "item",
   "product",
@@ -125,6 +127,20 @@ const LINE_ITEM_GRID_COLUMN_KEYS = [
   "line_total",
 ];
 
+function isHiddenInvoiceGridColumn(key) {
+  const normalized = String(key ?? "").trim().toLowerCase();
+  return INVOICES_GRID_HIDDEN_COLUMN_KEYS.has(normalized);
+}
+
+function isHiddenLineItemGridColumn(key) {
+  const normalized = String(key ?? "").trim().toLowerCase();
+  return LINE_ITEMS_GRID_HIDDEN_COLUMN_KEYS.has(normalized);
+}
+
+function getVisibleInvoiceColumnKeys(rows) {
+  return getColumnKeys(rows).filter((key) => !isHiddenInvoiceGridColumn(key));
+}
+
 function mergeLineItemColumnKeys(rows) {
   const fromRows = getColumnKeys(rows);
   if (fromRows.length === 0) return fromRows;
@@ -132,20 +148,15 @@ function mergeLineItemColumnKeys(rows) {
   const seen = new Set();
   const keys = [];
   for (const key of LINE_ITEM_GRID_COLUMN_KEYS) {
-    if (fromRows.includes(key)) {
+    if (fromRows.includes(key) && !isHiddenLineItemGridColumn(key)) {
       keys.push(key);
       seen.add(key);
     }
-  }
-  if (!seen.has("stock_item_id")) {
-    keys.unshift("stock_item_id");
-    seen.add("stock_item_id");
   }
   for (const key of fromRows) {
-    if (!seen.has(key)) {
-      keys.push(key);
-      seen.add(key);
-    }
+    if (seen.has(key) || isHiddenLineItemGridColumn(key)) continue;
+    keys.push(key);
+    seen.add(key);
   }
   return keys;
 }
@@ -417,7 +428,10 @@ export function ShowInvoicesModal({
   const [lineQty, setLineQty] = useState("");
   const [lineUnitPrice, setLineUnitPrice] = useState("");
 
-  const invoiceColumns = useMemo(() => getColumnKeys(invoiceRows), [invoiceRows]);
+  const invoiceColumns = useMemo(
+    () => getVisibleInvoiceColumnKeys(invoiceRows),
+    [invoiceRows]
+  );
   const lineColumns = useMemo(
     () => mergeLineItemColumnKeys(lineRows),
     [lineRows]
@@ -514,7 +528,7 @@ export function ShowInvoicesModal({
       if (!supabase) return;
 
       const { data, error: rpcError } = await supabase.rpc(
-        "pr_invoice_out_header",
+        "pr_invoice_out_header_for_crn",
         {
           p_customer_id: parsedCustomerId,
           p_from: fromDate || null,
@@ -720,19 +734,15 @@ export function ShowInvoicesModal({
                 scrollBodyMaxHeight={LINE_ITEMS_SCROLL_BODY_MAX_HEIGHT}
               />
               <div className="mt-3 flex flex-wrap items-end gap-2">
-                <label className="flex w-20 flex-col gap-1">
-                  <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                    id
-                  </span>
-                  <input
-                    type="text"
-                    name="line_item_id"
-                    value={lineId}
-                    readOnly
-                    tabIndex={-1}
-                    className={`${readOnlyInputClassName} w-full`}
-                  />
-                </label>
+                <input
+                  type="text"
+                  name="line_item_id"
+                  value={lineId}
+                  readOnly
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  className={`${readOnlyInputClassName} invisible h-0 w-0 min-w-0 shrink-0 border-0 p-0`}
+                />
                 <label className="flex w-28 flex-col gap-1">
                   <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
                     Invoice Number
