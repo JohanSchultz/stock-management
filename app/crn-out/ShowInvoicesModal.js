@@ -190,7 +190,7 @@ function sumInvoiceLineTotals(lines) {
 }
 
 function getLineIdFromRow(row) {
-  const value = row.id ?? row.stock_item_id ?? row.stockItemId;
+  const value = row.stock_item_id ?? row.stockItemId;
   if (value == null || value === "") return "";
   return String(value);
 }
