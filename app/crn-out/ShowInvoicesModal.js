@@ -110,6 +110,46 @@ function getColumnKeys(rows) {
   return keys;
 }
 
+const LINE_ITEM_GRID_COLUMN_KEYS = [
+  "id",
+  "stock_item_id",
+  "stock_code",
+  "item",
+  "product",
+  "descr",
+  "description",
+  "qty",
+  "quantity",
+  "unit_price",
+  "linetotal",
+  "line_total",
+];
+
+function mergeLineItemColumnKeys(rows) {
+  const fromRows = getColumnKeys(rows);
+  if (fromRows.length === 0) return fromRows;
+
+  const seen = new Set();
+  const keys = [];
+  for (const key of LINE_ITEM_GRID_COLUMN_KEYS) {
+    if (fromRows.includes(key)) {
+      keys.push(key);
+      seen.add(key);
+    }
+  }
+  if (!seen.has("stock_item_id")) {
+    keys.unshift("stock_item_id");
+    seen.add("stock_item_id");
+  }
+  for (const key of fromRows) {
+    if (!seen.has(key)) {
+      keys.push(key);
+      seen.add(key);
+    }
+  }
+  return keys;
+}
+
 function isLineTotalColumnKey(columnKey) {
   const normalized = String(columnKey ?? "").trim().toLowerCase();
   return normalized === "linetotal" || normalized === "line_total";
@@ -117,6 +157,7 @@ function isLineTotalColumnKey(columnKey) {
 
 function formatColumnHeader(key) {
   if (key === "invoice_number") return "Invoice Number";
+  if (key === "stock_item_id") return "Stock Item Id";
   if (isLineTotalColumnKey(key)) return "Total Price";
   if (INVOICE_DATE_COLUMN_KEYS.has(key)) {
     return key === "created_at" ? "Date" : key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -377,7 +418,10 @@ export function ShowInvoicesModal({
   const [lineUnitPrice, setLineUnitPrice] = useState("");
 
   const invoiceColumns = useMemo(() => getColumnKeys(invoiceRows), [invoiceRows]);
-  const lineColumns = useMemo(() => getColumnKeys(lineRows), [lineRows]);
+  const lineColumns = useMemo(
+    () => mergeLineItemColumnKeys(lineRows),
+    [lineRows]
+  );
 
   const resetModalData = useCallback(() => {
     setFromDate(currentMonthStartIsoDate());
