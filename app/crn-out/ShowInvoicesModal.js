@@ -77,6 +77,23 @@ function normalizeGridRows(data, rowKeyPrefix) {
   });
 }
 
+function normalizeInvoiceHeaderRows(data) {
+  return normalizeGridRows(data, "customer-invoice").map((row) => ({
+    ...row,
+    id: row.id ?? null,
+    customer_id: row.customer_id ?? row.customerId ?? null,
+    invoice_number: row.invoice_number ?? row.invoiceNumber ?? null,
+  }));
+}
+
+function normalizeInvoiceLineRows(data) {
+  return normalizeGridRows(data, "invoice-line").map((row) => ({
+    ...row,
+    id: row.id ?? row.invoice_line_id ?? row.invoiceLineId ?? null,
+    stock_item_id: row.stock_item_id ?? row.stockItemId ?? null,
+  }));
+}
+
 function getColumnKeys(rows) {
   const keys = [];
   const seen = new Set();
@@ -93,8 +110,14 @@ function getColumnKeys(rows) {
   return keys;
 }
 
+function isLineTotalColumnKey(columnKey) {
+  const normalized = String(columnKey ?? "").trim().toLowerCase();
+  return normalized === "linetotal" || normalized === "line_total";
+}
+
 function formatColumnHeader(key) {
   if (key === "invoice_number") return "Invoice Number";
+  if (isLineTotalColumnKey(key)) return "Total Price";
   if (INVOICE_DATE_COLUMN_KEYS.has(key)) {
     return key === "created_at" ? "Date" : key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   }
@@ -121,7 +144,7 @@ function formatGridCell(column, value) {
   if (INVOICE_DATE_COLUMN_KEYS.has(column)) {
     return formatInvoiceDate(value);
   }
-  if (isQtyOrUnitPriceColumnKey(column)) {
+  if (isQtyOrUnitPriceColumnKey(column) || isLineTotalColumnKey(column)) {
     return formatGridQtyOrUnitPrice(value);
   }
   return formatCellValue(value);
@@ -229,13 +252,13 @@ function DataGrid({
         {columns.map((column) => (
           <th
             key={column}
-            className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300"
+            className="whitespace-normal px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300"
           >
             {formatColumnHeader(column)}
           </th>
         ))}
         {trailingColumn ? (
-          <th className="whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+          <th className="whitespace-normal px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
             {trailingColumn.header}
           </th>
         ) : null}
@@ -280,13 +303,13 @@ function DataGrid({
             {columns.map((column) => (
               <td
                 key={`${row.rowKey}-${column}`}
-                className="whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200"
+                className="whitespace-normal break-words px-4 py-2 text-zinc-800 dark:text-zinc-200"
               >
                 {formatGridCell(column, row[column])}
               </td>
             ))}
             {trailingColumn ? (
-              <td className="whitespace-nowrap px-4 py-2">
+              <td className="whitespace-normal px-4 py-2">
                 {trailingColumn.render(row)}
               </td>
             ) : null}
@@ -409,7 +432,7 @@ export function ShowInvoicesModal({
       );
       if (rpcError) throw rpcError;
 
-      const lines = normalizeGridRows(data, "invoice-line");
+      const lines = normalizeInvoiceLineRows(data);
       setLineRows(lines);
       return lines;
     } catch (err) {
@@ -456,7 +479,7 @@ export function ShowInvoicesModal({
       );
       if (rpcError) throw rpcError;
 
-      setInvoiceRows(normalizeGridRows(data, "customer-invoice"));
+      setInvoiceRows(normalizeInvoiceHeaderRows(data));
     } catch (err) {
       setInvoiceRows([]);
       onError?.(err.message ?? "Failed to load invoices");
@@ -580,7 +603,7 @@ export function ShowInvoicesModal({
         </div>
 
         <div className="overflow-y-auto px-6 py-4">
-          <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
+          <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
             <div className="flex flex-wrap items-end gap-2 p-2">
               <div className="flex flex-wrap items-end gap-2 rounded-md bg-zinc-100 p-2 dark:bg-zinc-800/60">
                 <label className="flex flex-col gap-0.5">
