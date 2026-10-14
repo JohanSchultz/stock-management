@@ -12,7 +12,13 @@ import { prepareSupabaseClient } from "@/lib/supabase/useSupabaseIdleRecovery";
 import { createClient } from "@/lib/supabase/client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-const GRID_HIDDEN_COLUMN_KEYS = new Set(["id", "customer_id", "customerid"]);
+const GRID_HIDDEN_COLUMN_KEYS = new Set([
+  "id",
+  "customer_id",
+  "customerid",
+  "account_number",
+  "accountnumber",
+]);
 
 const showButtonClassName =
   "whitespace-nowrap rounded border border-zinc-300 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700";
