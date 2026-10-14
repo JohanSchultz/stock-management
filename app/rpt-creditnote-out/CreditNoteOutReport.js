@@ -8,7 +8,10 @@ import {
   oneMonthBeforeIsoDate,
   todayIsoDate,
 } from "@/lib/date/isoMonthRange";
-import { prepareSupabaseClient } from "@/lib/supabase/useSupabaseIdleRecovery";
+import {
+  getCrnNumberFromReportRow,
+  printCreditNoteByNumber,
+} from "@/lib/creditNotes/printCreditNotePdf";
 import { createClient } from "@/lib/supabase/client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -70,12 +73,6 @@ function isValidDateRange(from, to) {
   return from <= to;
 }
 
-function normalizeSingleRpcRow(data) {
-  if (Array.isArray(data)) return data[0] ?? null;
-  if (data && typeof data === "object") return data;
-  return null;
-}
-
 function normalizeCrnHeaderRows(data) {
   if (!Array.isArray(data)) return [];
 
@@ -97,16 +94,6 @@ function normalizeCrnHeaderRows(data) {
         rowId != null ? `crn-out-header-${rowId}` : `crn-out-header-${index}`,
     };
   });
-}
-
-function normalizeCrnHeaderForInvoicePdf(headerData) {
-  const row = normalizeSingleRpcRow(headerData);
-  if (!row || typeof row !== "object") return headerData;
-  return {
-    ...row,
-    invoice_number:
-      row.invoice_number ?? row.crn_number ?? row.crnNumber ?? "",
-  };
 }
 
 function getColumnKeys(rows) {
@@ -155,13 +142,6 @@ function mergeCreditNoteReportColumnKeys(rows) {
     seen.add(key);
   }
   return keys;
-}
-
-function getCrnNumberFromRow(row) {
-  const value =
-    row.crn_number ?? row.crnNumber ?? row.invoice_number ?? row.invoiceNumber;
-  if (value == null || value === "") return "";
-  return String(value);
 }
 
 function isLineTotalColumnKey(columnKey) {
@@ -390,7 +370,7 @@ export function CreditNoteOutReport() {
   }, [customerId, fromDate, toDate, loadReport]);
 
   const handleShowCreditNote = useCallback(async (row) => {
-    const normalizedCrnNumber = getCrnNumberFromRow(row);
+    const normalizedCrnNumber = getCrnNumberFromReportRow(row);
     if (!normalizedCrnNumber) {
       setError("Credit note number is missing for this row.");
       return;
@@ -400,36 +380,7 @@ export function CreditNoteOutReport() {
     setError("");
 
     try {
-      const supabase = await prepareSupabaseClient();
-      if (!supabase) return;
-
-      const [headerResult, linesResult] = await Promise.all([
-        supabase.rpc("pr_crn_out_header_by_invno", {
-          p_crn_number: normalizedCrnNumber,
-        }),
-        supabase.rpc("pr_crn_out_lines_by_invno", {
-          p_crn_number: normalizedCrnNumber,
-        }),
-      ]);
-
-      if (headerResult.error) throw headerResult.error;
-      if (linesResult.error) throw linesResult.error;
-
-      const { generateSampleInvoicePdf } = await import(
-        "@/lib/invoices/generateSampleInvoicePdf"
-      );
-      await generateSampleInvoicePdf(
-        normalizeCrnHeaderForInvoicePdf(headerResult.data),
-        linesResult.data,
-        normalizedCrnNumber,
-        {
-          documentTitle: "Credit Note",
-          documentNumberLabel: "CRN No",
-          contentRowOffset: 2,
-          centerDocumentTitle: true,
-          showSupplierOnBillTo: true,
-        }
-      );
+      await printCreditNoteByNumber(normalizedCrnNumber);
     } catch (err) {
       setError(err.message ?? "Failed to generate credit note PDF");
     } finally {

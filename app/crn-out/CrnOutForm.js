@@ -12,6 +12,10 @@ import {
   currentMonthEndIsoDate,
   currentMonthStartIsoDate,
 } from "@/lib/date/isoMonthRange";
+import {
+  getCrnNumberFromHeaderData,
+  printCreditNoteByNumber,
+} from "@/lib/creditNotes/printCreditNotePdf";
 import { prepareSupabaseClient } from "@/lib/supabase/useSupabaseIdleRecovery";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -231,62 +235,6 @@ function parseRpcIntegerReturn(data) {
     if (fromRow != null) return parseInteger(fromRow);
   }
   return parseInteger(data);
-}
-
-function getCrnNumberFromHeaderData(data) {
-  const row = normalizeSingleRpcRow(data);
-  if (!row || typeof row !== "object") return "";
-  const value = row.crn_number ?? row.crnNumber;
-  if (value == null || value === "") return "";
-  return String(value);
-}
-
-function normalizeCrnHeaderForInvoicePdf(headerData) {
-  const row = normalizeSingleRpcRow(headerData);
-  if (!row || typeof row !== "object") return headerData;
-  return {
-    ...row,
-    invoice_number:
-      row.invoice_number ?? row.crn_number ?? row.crnNumber ?? "",
-  };
-}
-
-async function printCreditNoteByNumber(crnNumber) {
-  const normalizedCrnNumber = String(crnNumber ?? "").trim();
-  if (!normalizedCrnNumber) {
-    throw new Error("Credit note number is missing.");
-  }
-
-  const supabase = await prepareSupabaseClient();
-  if (!supabase) return;
-
-  const [headerResult, linesResult] = await Promise.all([
-    supabase.rpc("pr_crn_out_header_by_invno", {
-      p_crn_number: normalizedCrnNumber,
-    }),
-    supabase.rpc("pr_crn_out_lines_by_invno", {
-      p_crn_number: normalizedCrnNumber,
-    }),
-  ]);
-
-  if (headerResult.error) throw headerResult.error;
-  if (linesResult.error) throw linesResult.error;
-
-  const { generateSampleInvoicePdf } = await import(
-    "@/lib/invoices/generateSampleInvoicePdf"
-  );
-  await generateSampleInvoicePdf(
-    normalizeCrnHeaderForInvoicePdf(headerResult.data),
-    linesResult.data,
-    normalizedCrnNumber,
-    {
-      documentTitle: "Credit Note",
-      documentNumberLabel: "CRN No",
-      contentRowOffset: 2,
-      centerDocumentTitle: true,
-      showSupplierOnBillTo: true,
-    }
-  );
 }
 
 function getSelectedRevenueAccountText(revenueAccountId, revenueAccountOptions) {
