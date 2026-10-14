@@ -378,18 +378,14 @@ function DataGrid({
       </h3>
       <div className="mt-2 overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
         {scrollBody ? (
-          <>
+          <div className={`overflow-y-auto ${scrollBodyMaxHeight}`}>
             <table className="w-full min-w-max text-left text-sm">
-              <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
+              <thead className="sticky top-0 z-10 border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
                 <tr>{headerCells}</tr>
               </thead>
+              {tableBody}
             </table>
-            <div className={`overflow-y-auto ${scrollBodyMaxHeight}`}>
-              <table className="w-full min-w-max text-left text-sm">
-                {tableBody}
-              </table>
-            </div>
-          </>
+          </div>
         ) : (
           <table className="w-full min-w-max text-left text-sm">
             <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
@@ -485,7 +481,7 @@ export function ShowInvoicesModal({
       if (!supabase) return [];
 
       const { data, error: rpcError } = await supabase.rpc(
-        "pr_invoice_out_lines_by_invno",
+        "pr_invoice_out_lines_by_invno_for_crn",
         { p_invoice_number: normalizedInvoiceNumber }
       );
       if (rpcError) throw rpcError;
