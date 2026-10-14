@@ -8,8 +8,14 @@ import {
   oneMonthBeforeIsoDate,
   todayIsoDate,
 } from "@/lib/date/isoMonthRange";
+import { prepareSupabaseClient } from "@/lib/supabase/useSupabaseIdleRecovery";
 import { createClient } from "@/lib/supabase/client";
 import { useCallback, useEffect, useMemo, useState } from "react";
+
+const GRID_HIDDEN_COLUMN_KEYS = new Set(["id", "customer_id", "customerid"]);
+
+const showButtonClassName =
+  "whitespace-nowrap rounded border border-zinc-300 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700";
 
 const inputClassName =
   "rounded border border-zinc-300 bg-white px-3 py-2 text-zinc-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200";
@@ -22,6 +28,15 @@ const INVOICE_DATE_COLUMN_KEYS = new Set([
   "date_placed",
   "book_out_date",
 ]);
+
+const INVOICE_REPORT_COLUMN_KEYS = [
+  "created_at",
+  "invoice_date",
+  "invoice_number",
+  "customer",
+  "account_number",
+  "comments",
+];
 
 const INVOICE_MONTH_NAMES = [
   "Jan",
@@ -59,6 +74,12 @@ function normalizeInvoiceHeaderRows(data) {
       ...row,
       id: row.id ?? null,
       customer_id: row.customer_id ?? row.customerId ?? null,
+      customer:
+        row.customer ??
+        row.customer_name ??
+        row.customerName ??
+        row.descr ??
+        null,
       invoice_number: row.invoice_number ?? row.invoiceNumber ?? null,
       rowKey:
         rowId != null ? `invoice-out-header-${rowId}` : `invoice-out-header-${index}`,
@@ -82,6 +103,40 @@ function getColumnKeys(rows) {
   return keys;
 }
 
+function isHiddenGridColumn(key) {
+  return GRID_HIDDEN_COLUMN_KEYS.has(normalizeColumnKey(key));
+}
+
+function getVisibleColumnKeys(rows) {
+  return getColumnKeys(rows).filter((key) => !isHiddenGridColumn(key));
+}
+
+function mergeInvoiceReportColumnKeys(rows) {
+  const fromRows = getVisibleColumnKeys(rows);
+  if (fromRows.length === 0) return fromRows;
+
+  const seen = new Set();
+  const keys = [];
+  for (const key of INVOICE_REPORT_COLUMN_KEYS) {
+    if (fromRows.includes(key)) {
+      keys.push(key);
+      seen.add(key);
+    }
+  }
+  for (const key of fromRows) {
+    if (seen.has(key)) continue;
+    keys.push(key);
+    seen.add(key);
+  }
+  return keys;
+}
+
+function getInvoiceNumberFromRow(row) {
+  const value = row.invoice_number ?? row.invoiceNumber;
+  if (value == null || value === "") return "";
+  return String(value);
+}
+
 function normalizeColumnKey(key) {
   return String(key ?? "").trim().toLowerCase();
 }
@@ -93,6 +148,7 @@ function isLineTotalColumnKey(columnKey) {
 
 function formatColumnHeader(key) {
   if (key === "invoice_number") return "Invoice Number";
+  if (normalizeColumnKey(key) === "customer") return "Customer";
   if (isLineTotalColumnKey(key)) return "Total Price";
   if (INVOICE_DATE_COLUMN_KEYS.has(key)) {
     return key === "created_at"
@@ -155,7 +211,16 @@ function normalizeCustomerOptions(data) {
     .sort((left, right) => optionLabel(left).localeCompare(optionLabel(right)));
 }
 
-function InvoiceOutReportGrid({ rows, columns, loading, emptyMessage }) {
+function InvoiceOutReportGrid({
+  rows,
+  columns,
+  loading,
+  emptyMessage,
+  printingRowKey,
+  onShowInvoice,
+}) {
+  const columnCount = Math.max(columns.length + 1, 1);
+
   return (
     <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
       <table className="w-full min-w-max text-left text-sm">
@@ -175,13 +240,16 @@ function InvoiceOutReportGrid({ rows, columns, loading, emptyMessage }) {
                 </th>
               ))
             )}
+            <th className="whitespace-normal px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+              &nbsp;
+            </th>
           </tr>
         </thead>
         <tbody>
           {loading ? (
             <tr>
               <td
-                colSpan={Math.max(columns.length, 1)}
+                colSpan={columnCount}
                 className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
               >
                 Loading…
@@ -190,7 +258,7 @@ function InvoiceOutReportGrid({ rows, columns, loading, emptyMessage }) {
           ) : rows.length === 0 ? (
             <tr>
               <td
-                colSpan={Math.max(columns.length, 1)}
+                colSpan={columnCount}
                 className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
               >
                 {emptyMessage}
@@ -210,6 +278,16 @@ function InvoiceOutReportGrid({ rows, columns, loading, emptyMessage }) {
                     {formatGridCell(column, row[column])}
                   </td>
                 ))}
+                <td className="whitespace-normal px-4 py-2">
+                  <button
+                    type="button"
+                    onClick={() => onShowInvoice(row)}
+                    disabled={printingRowKey != null}
+                    className={showButtonClassName}
+                  >
+                    {printingRowKey === row.rowKey ? "Loading…" : "Show"}
+                  </button>
+                </td>
               </tr>
             ))
           )}
@@ -227,9 +305,10 @@ export function InvoiceOutReport() {
   const [customersLoading, setCustomersLoading] = useState(false);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [printingRowKey, setPrintingRowKey] = useState(null);
   const [error, setError] = useState("");
 
-  const columns = useMemo(() => getColumnKeys(rows), [rows]);
+  const columns = useMemo(() => mergeInvoiceReportColumnKeys(rows), [rows]);
 
   const loadCustomers = useCallback(async () => {
     setCustomersLoading(true);
@@ -247,17 +326,13 @@ export function InvoiceOutReport() {
   }, []);
 
   const loadReport = useCallback(async () => {
-    const parsedCustomerId = parseInteger(customerId);
-    if (parsedCustomerId == null) {
-      setError("Select a customer.");
-      setRows([]);
-      return;
-    }
     if (!isValidDateRange(fromDate, toDate)) {
       setError("From date must be on or before To date.");
       setRows([]);
       return;
     }
+
+    const pCustomerId = parseInteger(customerId) ?? 0;
 
     setLoading(true);
     setError("");
@@ -267,7 +342,7 @@ export function InvoiceOutReport() {
       const { data, error: rpcError } = await supabase.rpc(
         "pr_invoice_out_header",
         {
-          p_customer_id: parsedCustomerId,
+          p_customer_id: pCustomerId,
           p_from: fromDate,
           p_to: toDate,
         }
@@ -287,7 +362,7 @@ export function InvoiceOutReport() {
   }, [loadCustomers]);
 
   useEffect(() => {
-    if (!customerId || !isValidDateRange(fromDate, toDate)) {
+    if (!isValidDateRange(fromDate, toDate)) {
       setRows([]);
       return;
     }
@@ -305,6 +380,47 @@ export function InvoiceOutReport() {
   function handleCustomerChange(value) {
     setCustomerId(value);
   }
+
+  const handleShowInvoice = useCallback(async (row) => {
+    const normalizedInvoiceNumber = getInvoiceNumberFromRow(row);
+    if (!normalizedInvoiceNumber) {
+      setError("Invoice number is missing for this row.");
+      return;
+    }
+
+    setPrintingRowKey(row.rowKey);
+    setError("");
+
+    try {
+      const supabase = await prepareSupabaseClient();
+      if (!supabase) return;
+
+      const [headerResult, linesResult] = await Promise.all([
+        supabase.rpc("pr_invoice_out_header_by_invno", {
+          p_invoice_number: normalizedInvoiceNumber,
+        }),
+        supabase.rpc("pr_invoice_out_lines_by_invno", {
+          p_invoice_number: normalizedInvoiceNumber,
+        }),
+      ]);
+
+      if (headerResult.error) throw headerResult.error;
+      if (linesResult.error) throw linesResult.error;
+
+      const { generateSampleInvoicePdf } = await import(
+        "@/lib/invoices/generateSampleInvoicePdf"
+      );
+      await generateSampleInvoicePdf(
+        headerResult.data,
+        linesResult.data,
+        normalizedInvoiceNumber
+      );
+    } catch (err) {
+      setError(err.message ?? "Failed to generate invoice PDF");
+    } finally {
+      setPrintingRowKey(null);
+    }
+  }, []);
 
   return (
     <div className="mt-4 w-full">
@@ -369,11 +485,9 @@ export function InvoiceOutReport() {
           rows={rows}
           columns={columns}
           loading={loading}
-          emptyMessage={
-            customerId
-              ? "No invoices found for the selected customer and date range."
-              : "Select a customer to load invoices."
-          }
+          printingRowKey={printingRowKey}
+          onShowInvoice={handleShowInvoice}
+          emptyMessage="No invoices found for the selected filters."
         />
       </div>
     </div>
