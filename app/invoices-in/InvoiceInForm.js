@@ -1,6 +1,7 @@
 "use client";
 
 import { SupplierSelect } from "@/components/SupplierSelect";
+import { todayIsoDate } from "@/lib/date/isoMonthRange";
 import { prepareSupabaseClient } from "@/lib/supabase/useSupabaseIdleRecovery";
 import { useCallback, useEffect, useState } from "react";
 
@@ -41,6 +42,8 @@ export function InvoiceInForm() {
   const [revenueAccountOptions, setRevenueAccountOptions] = useState([]);
   const [revenueAccountsLoading, setRevenueAccountsLoading] = useState(false);
   const [supplierId, setSupplierId] = useState("");
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState(() => todayIsoDate());
   const [error, setError] = useState("");
 
   const loadRevenueAccounts = useCallback(async () => {
@@ -94,6 +97,34 @@ export function InvoiceInForm() {
         onLoadError={(message) => setError(message)}
         className="mt-4 flex w-full max-w-2xl flex-col gap-1"
       />
+
+      <div className="mt-4 grid max-w-2xl grid-cols-1 gap-4 sm:grid-cols-2">
+        <label className="flex flex-col gap-1">
+          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            Invoice Number
+          </span>
+          <input
+            type="text"
+            name="invoice_number"
+            value={invoiceNumber}
+            onChange={(e) => setInvoiceNumber(e.target.value)}
+            className={`${inputClassName} w-full`}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            Invoice Date
+          </span>
+          <input
+            type="date"
+            name="invoice_date"
+            value={invoiceDate}
+            onChange={(e) => setInvoiceDate(e.target.value)}
+            className={`${inputClassName} w-full`}
+          />
+        </label>
+      </div>
 
       {error ? (
         <p
