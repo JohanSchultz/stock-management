@@ -43,6 +43,34 @@ const inputClassName =
 const frameClassName =
   "rounded-lg border border-zinc-300 px-4 py-4 dark:border-zinc-600";
 
+const readOnlyInputClassName =
+  "rounded border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 read-only:cursor-default dark:border-zinc-600 dark:bg-zinc-900/50 dark:text-zinc-200";
+
+const addButtonClassName =
+  "shrink-0 rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500";
+
+const BOOKED_IN_GRID_HIDDEN_COLUMN_KEYS = new Set([
+  "id",
+  "book_in_id",
+  "bookinid",
+  "stock_item_id",
+  "stockitemid",
+  "action_user",
+  "actionuser",
+]);
+
+const BOOKED_IN_GRID_COLUMN_ORDER = [
+  "book_in_date",
+  "booked_in_date",
+  "created_at",
+  "stock_code",
+  "descr",
+  "description",
+  "unit_price",
+  "qty",
+  "quantity",
+];
+
 function parseInteger(value) {
   if (value == null || value === "") return null;
   const parsed = Number.parseInt(String(value), 10);
@@ -96,6 +124,14 @@ function normalizeBookedInGridRows(data) {
   });
 }
 
+function normalizeColumnKey(key) {
+  return String(key ?? "").trim().toLowerCase();
+}
+
+function isHiddenBookedInGridColumn(key) {
+  return BOOKED_IN_GRID_HIDDEN_COLUMN_KEYS.has(normalizeColumnKey(key));
+}
+
 function getColumnKeys(rows) {
   const keys = [];
   const seen = new Set();
@@ -112,7 +148,35 @@ function getColumnKeys(rows) {
   return keys;
 }
 
+function getVisibleBookedInColumnKeys(rows) {
+  return getColumnKeys(rows).filter((key) => !isHiddenBookedInGridColumn(key));
+}
+
+function mergeBookedInColumnKeys(rows) {
+  const fromRows = getVisibleBookedInColumnKeys(rows);
+  if (fromRows.length === 0) return fromRows;
+
+  const seen = new Set();
+  const keys = [];
+  for (const key of BOOKED_IN_GRID_COLUMN_ORDER) {
+    if (fromRows.includes(key)) {
+      keys.push(key);
+      seen.add(key);
+    }
+  }
+  for (const key of fromRows) {
+    if (seen.has(key)) continue;
+    keys.push(key);
+    seen.add(key);
+  }
+  return keys;
+}
+
 function formatColumnHeader(key) {
+  const normalized = normalizeColumnKey(key);
+  if (normalized === "descr" || normalized === "description") {
+    return "Item Description";
+  }
   if (key === "id" || key === "book_in_id") return "Book In Number";
   if (BOOK_IN_DATE_COLUMN_KEYS.has(key)) {
     if (key === "created_at") return "Date";
@@ -147,6 +211,81 @@ function formatBookedInGridCell(column, value) {
   return formatCellValue(value);
 }
 
+function toIsoDateInputValue(value) {
+  if (value == null || value === "") return "";
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    return value.slice(0, 10);
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getBookInNumberFromRow(row) {
+  const value = row.id ?? row.book_in_id ?? row.bookInId;
+  if (value == null || value === "") return "";
+  return String(value);
+}
+
+function getStockItemIdFromRow(row) {
+  const value = row.stock_item_id ?? row.stockItemId;
+  if (value == null || value === "") return "";
+  return String(value);
+}
+
+function getBookedInDateFromRow(row) {
+  for (const key of [
+    "book_in_date",
+    "booked_in_date",
+    "created_at",
+    "date_placed",
+    "order_placed_date",
+  ]) {
+    if (row[key] != null && row[key] !== "") {
+      return toIsoDateInputValue(row[key]);
+    }
+  }
+  return "";
+}
+
+function getStockCodeFromRow(row) {
+  const value = row.stock_code ?? row.stockCode;
+  if (value == null || value === "") return "";
+  return String(value);
+}
+
+function getItemDescriptionFromRow(row) {
+  const value = row.descr ?? row.description;
+  if (value == null || value === "") return "";
+  return String(value);
+}
+
+function getUnitPriceFromRow(row) {
+  const value = row.unit_price ?? row.unitPrice;
+  if (value == null || value === "") return "";
+  return String(value);
+}
+
+function getQtyFromRow(row) {
+  const value = row.qty ?? row.quantity ?? row.Qty;
+  if (value == null || value === "") return "";
+  return String(value);
+}
+
+function clearBookedInLineFields(setters) {
+  setters.setSelectedBookedInRowKey(null);
+  setters.setLineBookInId("");
+  setters.setLineStockItemId("");
+  setters.setLineBookedInDate("");
+  setters.setLineStockCode("");
+  setters.setLineItemDescription("");
+  setters.setLineUnitPrice("");
+  setters.setLineQty("");
+}
+
 export function InvoiceInForm() {
   const [revenueAccountId, setRevenueAccountId] = useState("");
   const [revenueAccountOptions, setRevenueAccountOptions] = useState([]);
@@ -161,12 +300,22 @@ export function InvoiceInForm() {
   const [bookedInToDate, setBookedInToDate] = useState(() => todayIsoDate());
   const [bookedInRows, setBookedInRows] = useState([]);
   const [bookedInGridLoading, setBookedInGridLoading] = useState(false);
+  const [selectedBookedInRowKey, setSelectedBookedInRowKey] = useState(null);
+  const [lineBookInId, setLineBookInId] = useState("");
+  const [lineStockItemId, setLineStockItemId] = useState("");
+  const [lineBookedInDate, setLineBookedInDate] = useState("");
+  const [lineStockCode, setLineStockCode] = useState("");
+  const [lineItemDescription, setLineItemDescription] = useState("");
+  const [lineUnitPrice, setLineUnitPrice] = useState("");
+  const [lineQty, setLineQty] = useState("");
   const [error, setError] = useState("");
 
   const bookedInColumns = useMemo(
-    () => getColumnKeys(bookedInRows),
+    () => mergeBookedInColumnKeys(bookedInRows),
     [bookedInRows]
   );
+
+  const canShowAddButton = Boolean(selectedBookedInRowKey && lineBookInId);
 
   const loadRevenueAccounts = useCallback(async () => {
     setRevenueAccountsLoading(true);
@@ -190,6 +339,16 @@ export function InvoiceInForm() {
     const parsedSupplierId = parseInteger(supplierId);
     if (parsedSupplierId == null) {
       setBookedInRows([]);
+      clearBookedInLineFields({
+        setSelectedBookedInRowKey,
+        setLineBookInId,
+        setLineStockItemId,
+        setLineBookedInDate,
+        setLineStockCode,
+        setLineItemDescription,
+        setLineUnitPrice,
+        setLineQty,
+      });
       return;
     }
 
@@ -216,6 +375,16 @@ export function InvoiceInForm() {
       );
       if (rpcError) throw rpcError;
       setBookedInRows(normalizeBookedInGridRows(data));
+      clearBookedInLineFields({
+        setSelectedBookedInRowKey,
+        setLineBookInId,
+        setLineStockItemId,
+        setLineBookedInDate,
+        setLineStockCode,
+        setLineItemDescription,
+        setLineUnitPrice,
+        setLineQty,
+      });
     } catch (err) {
       setBookedInRows([]);
       setError(err.message ?? "Failed to load booked in records");
@@ -239,6 +408,35 @@ export function InvoiceInForm() {
     }
     void loadBookedInGrid();
   }, [supplierId, bookedInFromDate, bookedInToDate, loadBookedInGrid]);
+
+  function handleBookedInRowClick(row) {
+    setSelectedBookedInRowKey(row.rowKey);
+    setLineBookInId(getBookInNumberFromRow(row));
+    setLineStockItemId(getStockItemIdFromRow(row));
+    setLineBookedInDate(getBookedInDateFromRow(row));
+    setLineStockCode(getStockCodeFromRow(row));
+    setLineItemDescription(getItemDescriptionFromRow(row));
+    setLineUnitPrice(getUnitPriceFromRow(row));
+    setLineQty(getQtyFromRow(row));
+  }
+
+  function handleAddBookedInLine() {
+    if (!lineBookInId) {
+      setError("Select a booked in row before adding.");
+      return;
+    }
+    setError("");
+    clearBookedInLineFields({
+      setSelectedBookedInRowKey,
+      setLineBookInId,
+      setLineStockItemId,
+      setLineBookedInDate,
+      setLineStockCode,
+      setLineItemDescription,
+      setLineUnitPrice,
+      setLineQty,
+    });
+  }
 
   return (
     <div className="mt-6 w-full max-w-6xl">
@@ -393,7 +591,12 @@ export function InvoiceInForm() {
                 bookedInRows.map((row) => (
                   <tr
                     key={row.rowKey}
-                    className="border-b border-zinc-100 last:border-b-0 dark:border-zinc-800"
+                    onClick={() => handleBookedInRowClick(row)}
+                    className={`cursor-pointer border-b border-zinc-100 last:border-b-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/50 ${
+                      selectedBookedInRowKey === row.rowKey
+                        ? "bg-sky-50 dark:bg-sky-900/20"
+                        : ""
+                    }`}
                   >
                     {bookedInColumns.map((column) => (
                       <td
@@ -408,6 +611,100 @@ export function InvoiceInForm() {
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-end gap-2">
+          <input
+            type="text"
+            name="id"
+            value={lineBookInId}
+            readOnly
+            tabIndex={-1}
+            aria-hidden="true"
+            className={`${readOnlyInputClassName} invisible h-0 w-0 min-w-0 shrink-0 border-0 p-0`}
+          />
+          <input
+            type="text"
+            name="stock_item_id"
+            value={lineStockItemId}
+            readOnly
+            tabIndex={-1}
+            aria-hidden="true"
+            className={`${readOnlyInputClassName} invisible h-0 w-0 min-w-0 shrink-0 border-0 p-0`}
+          />
+          <label className="flex w-36 flex-col gap-1">
+            <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+              Booked In Date
+            </span>
+            <input
+              type="text"
+              name="booked_in_date"
+              value={lineBookedInDate}
+              readOnly
+              tabIndex={-1}
+              className={`${readOnlyInputClassName} w-full`}
+            />
+          </label>
+          <label className="flex w-28 flex-col gap-1">
+            <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+              Stock Code
+            </span>
+            <input
+              type="text"
+              name="stock_code"
+              value={lineStockCode}
+              readOnly
+              tabIndex={-1}
+              className={`${readOnlyInputClassName} w-full`}
+            />
+          </label>
+          <label className="flex min-w-[12rem] flex-1 flex-col gap-1">
+            <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+              Item Description
+            </span>
+            <input
+              type="text"
+              name="item_description"
+              value={lineItemDescription}
+              readOnly
+              tabIndex={-1}
+              className={`${readOnlyInputClassName} w-full`}
+            />
+          </label>
+          <label className="flex w-28 flex-col gap-1">
+            <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+              Unit Price
+            </span>
+            <input
+              type="text"
+              name="unit_price"
+              value={lineUnitPrice}
+              readOnly
+              tabIndex={-1}
+              className={`${readOnlyInputClassName} w-full`}
+            />
+          </label>
+          <label className="flex w-24 flex-col gap-1">
+            <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+              Qty
+            </span>
+            <input
+              type="text"
+              name="qty"
+              value={lineQty}
+              readOnly
+              tabIndex={-1}
+              className={`${readOnlyInputClassName} w-full`}
+            />
+          </label>
+          <button
+            type="button"
+            onClick={handleAddBookedInLine}
+            disabled={!canShowAddButton}
+            className={`${addButtonClassName} disabled:cursor-not-allowed disabled:opacity-50`}
+          >
+            Add
+          </button>
         </div>
       </div>
 
