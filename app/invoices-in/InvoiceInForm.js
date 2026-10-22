@@ -49,6 +49,10 @@ const readOnlyInputClassName =
 const addButtonClassName =
   "shrink-0 rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500";
 
+/** Aligns booked-in and ad-hoc entry rows (date/code/desc | unit price | qty | Add). */
+const INVOICE_ITEM_ENTRY_GRID_CLASS =
+  "grid w-full max-w-6xl grid-cols-[9rem_7rem_minmax(12rem,1fr)_7rem_6rem_auto] gap-x-2 items-end";
+
 const BOOKED_IN_GRID_HIDDEN_COLUMN_KEYS = new Set([
   "id",
   "book_in_id",
@@ -329,6 +333,9 @@ export function InvoiceInForm() {
   const [lineUnitPrice, setLineUnitPrice] = useState("");
   const [lineQty, setLineQty] = useState("");
   const [invoiceItems, setInvoiceItems] = useState([]);
+  const [adHocDescription, setAdHocDescription] = useState("");
+  const [adHocUnitPrice, setAdHocUnitPrice] = useState("");
+  const [adHocQty, setAdHocQty] = useState("");
   const [error, setError] = useState("");
 
   const bookedInColumns = useMemo(
@@ -337,6 +344,11 @@ export function InvoiceInForm() {
   );
 
   const canShowAddButton = Boolean(selectedBookedInRowKey && lineBookInId);
+  const canShowAdHocAddButton = Boolean(
+    String(adHocDescription ?? "").trim() &&
+      String(adHocUnitPrice ?? "").trim() &&
+      String(adHocQty ?? "").trim()
+  );
 
   const loadRevenueAccounts = useCallback(async () => {
     setRevenueAccountsLoading(true);
@@ -474,6 +486,33 @@ export function InvoiceInForm() {
 
   function handleRemoveInvoiceItem(rowKey) {
     setInvoiceItems((current) => current.filter((row) => row.rowKey !== rowKey));
+  }
+
+  function handleAddAdHocLine() {
+    const description = String(adHocDescription ?? "").trim();
+    const unitPrice = String(adHocUnitPrice ?? "").trim();
+    const qty = String(adHocQty ?? "").trim();
+    if (!description || !unitPrice || !qty) {
+      setError("Enter description, unit price, and qty for an ad hoc item.");
+      return;
+    }
+    setError("");
+    setInvoiceItems((current) => [
+      ...current,
+      {
+        rowKey: `invoice-item-adhoc-${current.length}-${Date.now()}`,
+        id: "",
+        stock_item_id: "",
+        booked_in_date: "",
+        stock_code: "",
+        item_description: description,
+        unit_price: unitPrice,
+        quantity: qty,
+      },
+    ]);
+    setAdHocDescription("");
+    setAdHocUnitPrice("");
+    setAdHocQty("");
   }
 
   return (
@@ -652,26 +691,27 @@ export function InvoiceInForm() {
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-end gap-2">
-        <input
-          type="text"
-          name="id"
-          value={lineBookInId}
-          readOnly
-          tabIndex={-1}
-          aria-hidden="true"
-          className={`${readOnlyInputClassName} invisible h-0 w-0 min-w-0 shrink-0 border-0 p-0`}
-        />
-        <input
-          type="text"
-          name="stock_item_id"
-          value={lineStockItemId}
-          readOnly
-          tabIndex={-1}
-          aria-hidden="true"
-          className={`${readOnlyInputClassName} invisible h-0 w-0 min-w-0 shrink-0 border-0 p-0`}
-        />
-        <label className="flex w-36 flex-col gap-1">
+      <input
+        type="text"
+        name="id"
+        value={lineBookInId}
+        readOnly
+        tabIndex={-1}
+        aria-hidden="true"
+        className="hidden"
+      />
+      <input
+        type="text"
+        name="stock_item_id"
+        value={lineStockItemId}
+        readOnly
+        tabIndex={-1}
+        aria-hidden="true"
+        className="hidden"
+      />
+
+      <div className={`mt-4 ${INVOICE_ITEM_ENTRY_GRID_CLASS}`}>
+        <label className="flex min-w-0 flex-col gap-1">
           <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
             Booked In Date
           </span>
@@ -684,7 +724,7 @@ export function InvoiceInForm() {
             className={`${readOnlyInputClassName} w-full`}
           />
         </label>
-        <label className="flex w-28 flex-col gap-1">
+        <label className="flex min-w-0 flex-col gap-1">
           <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
             Stock Code
           </span>
@@ -697,7 +737,7 @@ export function InvoiceInForm() {
             className={`${readOnlyInputClassName} w-full`}
           />
         </label>
-        <label className="flex min-w-[12rem] flex-1 flex-col gap-1">
+        <label className="flex min-w-0 flex-col gap-1">
           <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
             Item Description
           </span>
@@ -710,7 +750,7 @@ export function InvoiceInForm() {
             className={`${readOnlyInputClassName} w-full`}
           />
         </label>
-        <label className="flex w-28 flex-col gap-1">
+        <label className="flex min-w-0 flex-col gap-1">
           <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
             Unit Price
           </span>
@@ -723,7 +763,7 @@ export function InvoiceInForm() {
             className={`${readOnlyInputClassName} w-full`}
           />
         </label>
-        <label className="flex w-24 flex-col gap-1">
+        <label className="flex min-w-0 flex-col gap-1">
           <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
             Qty
           </span>
@@ -740,6 +780,56 @@ export function InvoiceInForm() {
           type="button"
           onClick={handleAddBookedInLine}
           disabled={!canShowAddButton}
+          className={`${addButtonClassName} disabled:cursor-not-allowed disabled:opacity-50`}
+        >
+          Add
+        </button>
+      </div>
+
+      <h2 className="mt-6 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+        Ad Hoc Items
+      </h2>
+      <div className={`mt-2 ${INVOICE_ITEM_ENTRY_GRID_CLASS}`}>
+        <label className="col-span-3 flex min-w-0 flex-col gap-1">
+          <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+            Description
+          </span>
+          <input
+            type="text"
+            name="ad_hoc_description"
+            value={adHocDescription}
+            onChange={(e) => setAdHocDescription(e.target.value)}
+            className={`${inputClassName} w-full`}
+          />
+        </label>
+        <label className="flex min-w-0 flex-col gap-1">
+          <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+            Unit Price
+          </span>
+          <input
+            type="text"
+            name="ad_hoc_unit_price"
+            value={adHocUnitPrice}
+            onChange={(e) => setAdHocUnitPrice(e.target.value)}
+            className={`${inputClassName} w-full`}
+          />
+        </label>
+        <label className="flex min-w-0 flex-col gap-1">
+          <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+            Qty
+          </span>
+          <input
+            type="text"
+            name="ad_hoc_qty"
+            value={adHocQty}
+            onChange={(e) => setAdHocQty(e.target.value)}
+            className={`${inputClassName} w-full`}
+          />
+        </label>
+        <button
+          type="button"
+          onClick={handleAddAdHocLine}
+          disabled={!canShowAdHocAddButton}
           className={`${addButtonClassName} disabled:cursor-not-allowed disabled:opacity-50`}
         >
           Add
