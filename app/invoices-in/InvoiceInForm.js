@@ -8,6 +8,7 @@ import {
 import {
   formatGridQtyOrUnitPrice,
   isQtyOrUnitPriceColumnKey,
+  parseGridNumber,
 } from "@/lib/format/gridNumberFormat";
 import { prepareSupabaseClient } from "@/lib/supabase/useSupabaseIdleRecovery";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -53,6 +54,26 @@ const addButtonClassName =
 const INVOICE_ITEM_ENTRY_GRID_CLASS =
   "grid w-full max-w-6xl grid-cols-[9rem_7rem_minmax(12rem,1fr)_7rem_6rem_auto] gap-x-2 items-end";
 
+const numericInputProps = {
+  type: "number",
+  step: "any",
+  inputMode: "decimal",
+  min: 0,
+};
+
+function handleDecimalInputChange(nextValue, setter) {
+  if (nextValue === "" || nextValue === "-" || nextValue.endsWith(".")) {
+    setter(nextValue);
+    return;
+  }
+  const parsed = parseGridNumber(nextValue);
+  if (parsed == null) {
+    setter(nextValue);
+    return;
+  }
+  setter(nextValue);
+}
+
 const BOOKED_IN_GRID_HIDDEN_COLUMN_KEYS = new Set([
   "id",
   "book_in_id",
@@ -63,15 +84,23 @@ const BOOKED_IN_GRID_HIDDEN_COLUMN_KEYS = new Set([
   "actionuser",
 ]);
 
+const INVOICE_ITEMS_HIDDEN_COLUMN_KEYS = new Set(["id", "stock_item_id"]);
+
 const INVOICE_ITEMS_GRID_COLUMNS = [
-  { key: "id", header: "id", hidden: true },
-  { key: "stock_item_id", header: "stock_item_id", hidden: true },
+  { key: "id", header: "id" },
+  { key: "stock_item_id", header: "stock_item_id" },
   { key: "booked_in_date", header: "Booked In Date" },
   { key: "stock_code", header: "Stock Code" },
   { key: "item_description", header: "Item Description" },
   { key: "unit_price", header: "Unit Price" },
   { key: "quantity", header: "Qty" },
 ];
+
+function isHiddenInvoiceItemsGridColumn(columnKey) {
+  return INVOICE_ITEMS_HIDDEN_COLUMN_KEYS.has(
+    String(columnKey ?? "").trim().toLowerCase()
+  );
+}
 
 const BOOKED_IN_GRID_COLUMN_ORDER = [
   "book_in_date",
@@ -335,7 +364,7 @@ export function InvoiceInForm() {
   const [invoiceItems, setInvoiceItems] = useState([]);
   const [adHocDescription, setAdHocDescription] = useState("");
   const [adHocUnitPrice, setAdHocUnitPrice] = useState("");
-  const [adHocQty, setAdHocQty] = useState("");
+  const [adHocQty, setAdHocQty] = useState("1");
   const [error, setError] = useState("");
 
   const bookedInColumns = useMemo(
@@ -343,11 +372,16 @@ export function InvoiceInForm() {
     [bookedInRows]
   );
 
-  const canShowAddButton = Boolean(selectedBookedInRowKey && lineBookInId);
+  const canShowAddButton = Boolean(
+    selectedBookedInRowKey &&
+      lineBookInId &&
+      parseGridNumber(lineUnitPrice) != null &&
+      parseGridNumber(lineQty) != null
+  );
   const canShowAdHocAddButton = Boolean(
     String(adHocDescription ?? "").trim() &&
-      String(adHocUnitPrice ?? "").trim() &&
-      String(adHocQty ?? "").trim()
+      parseGridNumber(adHocUnitPrice) != null &&
+      parseGridNumber(adHocQty) != null
   );
 
   const loadRevenueAccounts = useCallback(async () => {
@@ -458,6 +492,13 @@ export function InvoiceInForm() {
       setError("Select a booked in row before adding.");
       return;
     }
+    if (
+      parseGridNumber(lineUnitPrice) == null ||
+      parseGridNumber(lineQty) == null
+    ) {
+      setError("Enter valid unit price and qty.");
+      return;
+    }
     setError("");
     setInvoiceItems((current) => [
       ...current,
@@ -501,8 +542,8 @@ export function InvoiceInForm() {
       ...current,
       {
         rowKey: `invoice-item-adhoc-${current.length}-${Date.now()}`,
-        id: "",
-        stock_item_id: "",
+        id: 0,
+        stock_item_id: 0,
         booked_in_date: "",
         stock_code: "",
         item_description: description,
@@ -512,7 +553,7 @@ export function InvoiceInForm() {
     ]);
     setAdHocDescription("");
     setAdHocUnitPrice("");
-    setAdHocQty("");
+    setAdHocQty("1");
   }
 
   return (
@@ -755,12 +796,13 @@ export function InvoiceInForm() {
             Unit Price
           </span>
           <input
-            type="text"
+            {...numericInputProps}
             name="unit_price"
             value={lineUnitPrice}
-            readOnly
-            tabIndex={-1}
-            className={`${readOnlyInputClassName} w-full`}
+            onChange={(e) =>
+              handleDecimalInputChange(e.target.value, setLineUnitPrice)
+            }
+            className={`${inputClassName} w-full`}
           />
         </label>
         <label className="flex min-w-0 flex-col gap-1">
@@ -768,12 +810,11 @@ export function InvoiceInForm() {
             Qty
           </span>
           <input
-            type="text"
+            {...numericInputProps}
             name="qty"
             value={lineQty}
-            readOnly
-            tabIndex={-1}
-            className={`${readOnlyInputClassName} w-full`}
+            onChange={(e) => handleDecimalInputChange(e.target.value, setLineQty)}
+            className={`${inputClassName} w-full`}
           />
         </label>
         <button
@@ -807,10 +848,12 @@ export function InvoiceInForm() {
             Unit Price
           </span>
           <input
-            type="text"
+            {...numericInputProps}
             name="ad_hoc_unit_price"
             value={adHocUnitPrice}
-            onChange={(e) => setAdHocUnitPrice(e.target.value)}
+            onChange={(e) =>
+              handleDecimalInputChange(e.target.value, setAdHocUnitPrice)
+            }
             className={`${inputClassName} w-full`}
           />
         </label>
@@ -819,10 +862,10 @@ export function InvoiceInForm() {
             Qty
           </span>
           <input
-            type="text"
+            {...numericInputProps}
             name="ad_hoc_qty"
             value={adHocQty}
-            onChange={(e) => setAdHocQty(e.target.value)}
+            onChange={(e) => handleDecimalInputChange(e.target.value, setAdHocQty)}
             className={`${inputClassName} w-full`}
           />
         </label>
@@ -847,7 +890,7 @@ export function InvoiceInForm() {
                 <th
                   key={column.key}
                   className={`whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300 ${
-                    column.hidden ? "hidden" : ""
+                    isHiddenInvoiceItemsGridColumn(column.key) ? "hidden" : ""
                   }`}
                 >
                   {column.header}
@@ -878,7 +921,9 @@ export function InvoiceInForm() {
                     <td
                       key={`${row.rowKey}-${column.key}`}
                       className={`whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200 ${
-                        column.hidden ? "hidden" : ""
+                        isHiddenInvoiceItemsGridColumn(column.key)
+                          ? "hidden"
+                          : ""
                       }`}
                     >
                       {formatInvoiceItemGridCell(
