@@ -59,6 +59,16 @@ const BOOKED_IN_GRID_HIDDEN_COLUMN_KEYS = new Set([
   "actionuser",
 ]);
 
+const INVOICE_ITEMS_GRID_COLUMNS = [
+  { key: "id", header: "id", hidden: true },
+  { key: "stock_item_id", header: "stock_item_id", hidden: true },
+  { key: "booked_in_date", header: "Booked In Date" },
+  { key: "stock_code", header: "Stock Code" },
+  { key: "item_description", header: "Item Description" },
+  { key: "unit_price", header: "Unit Price" },
+  { key: "quantity", header: "Qty" },
+];
+
 const BOOKED_IN_GRID_COLUMN_ORDER = [
   "book_in_date",
   "booked_in_date",
@@ -211,6 +221,16 @@ function formatBookedInGridCell(column, value) {
   return formatCellValue(value);
 }
 
+function formatInvoiceItemGridCell(columnKey, value) {
+  if (columnKey === "booked_in_date") {
+    return formatBookInDate(value) || formatCellValue(value);
+  }
+  if (isQtyOrUnitPriceColumnKey(columnKey)) {
+    return formatGridQtyOrUnitPrice(value);
+  }
+  return formatCellValue(value);
+}
+
 function toIsoDateInputValue(value) {
   if (value == null || value === "") return "";
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
@@ -308,6 +328,7 @@ export function InvoiceInForm() {
   const [lineItemDescription, setLineItemDescription] = useState("");
   const [lineUnitPrice, setLineUnitPrice] = useState("");
   const [lineQty, setLineQty] = useState("");
+  const [invoiceItems, setInvoiceItems] = useState([]);
   const [error, setError] = useState("");
 
   const bookedInColumns = useMemo(
@@ -426,6 +447,19 @@ export function InvoiceInForm() {
       return;
     }
     setError("");
+    setInvoiceItems((current) => [
+      ...current,
+      {
+        rowKey: `invoice-item-${current.length}-${Date.now()}`,
+        id: lineBookInId,
+        stock_item_id: lineStockItemId,
+        booked_in_date: lineBookedInDate,
+        stock_code: lineStockCode,
+        item_description: lineItemDescription,
+        unit_price: lineUnitPrice,
+        quantity: lineQty,
+      },
+    ]);
     clearBookedInLineFields({
       setSelectedBookedInRowKey,
       setLineBookInId,
@@ -436,6 +470,10 @@ export function InvoiceInForm() {
       setLineUnitPrice,
       setLineQty,
     });
+  }
+
+  function handleRemoveInvoiceItem(rowKey) {
+    setInvoiceItems((current) => current.filter((row) => row.rowKey !== rowKey));
   }
 
   return (
@@ -612,100 +650,167 @@ export function InvoiceInForm() {
             </tbody>
           </table>
         </div>
+      </div>
 
-        <div className="mt-4 flex flex-wrap items-end gap-2">
+      <div className="mt-4 flex flex-wrap items-end gap-2">
+        <input
+          type="text"
+          name="id"
+          value={lineBookInId}
+          readOnly
+          tabIndex={-1}
+          aria-hidden="true"
+          className={`${readOnlyInputClassName} invisible h-0 w-0 min-w-0 shrink-0 border-0 p-0`}
+        />
+        <input
+          type="text"
+          name="stock_item_id"
+          value={lineStockItemId}
+          readOnly
+          tabIndex={-1}
+          aria-hidden="true"
+          className={`${readOnlyInputClassName} invisible h-0 w-0 min-w-0 shrink-0 border-0 p-0`}
+        />
+        <label className="flex w-36 flex-col gap-1">
+          <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+            Booked In Date
+          </span>
           <input
             type="text"
-            name="id"
-            value={lineBookInId}
+            name="booked_in_date"
+            value={lineBookedInDate}
             readOnly
             tabIndex={-1}
-            aria-hidden="true"
-            className={`${readOnlyInputClassName} invisible h-0 w-0 min-w-0 shrink-0 border-0 p-0`}
+            className={`${readOnlyInputClassName} w-full`}
           />
+        </label>
+        <label className="flex w-28 flex-col gap-1">
+          <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+            Stock Code
+          </span>
           <input
             type="text"
-            name="stock_item_id"
-            value={lineStockItemId}
+            name="stock_code"
+            value={lineStockCode}
             readOnly
             tabIndex={-1}
-            aria-hidden="true"
-            className={`${readOnlyInputClassName} invisible h-0 w-0 min-w-0 shrink-0 border-0 p-0`}
+            className={`${readOnlyInputClassName} w-full`}
           />
-          <label className="flex w-36 flex-col gap-1">
-            <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-              Booked In Date
-            </span>
-            <input
-              type="text"
-              name="booked_in_date"
-              value={lineBookedInDate}
-              readOnly
-              tabIndex={-1}
-              className={`${readOnlyInputClassName} w-full`}
-            />
-          </label>
-          <label className="flex w-28 flex-col gap-1">
-            <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-              Stock Code
-            </span>
-            <input
-              type="text"
-              name="stock_code"
-              value={lineStockCode}
-              readOnly
-              tabIndex={-1}
-              className={`${readOnlyInputClassName} w-full`}
-            />
-          </label>
-          <label className="flex min-w-[12rem] flex-1 flex-col gap-1">
-            <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-              Item Description
-            </span>
-            <input
-              type="text"
-              name="item_description"
-              value={lineItemDescription}
-              readOnly
-              tabIndex={-1}
-              className={`${readOnlyInputClassName} w-full`}
-            />
-          </label>
-          <label className="flex w-28 flex-col gap-1">
-            <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-              Unit Price
-            </span>
-            <input
-              type="text"
-              name="unit_price"
-              value={lineUnitPrice}
-              readOnly
-              tabIndex={-1}
-              className={`${readOnlyInputClassName} w-full`}
-            />
-          </label>
-          <label className="flex w-24 flex-col gap-1">
-            <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-              Qty
-            </span>
-            <input
-              type="text"
-              name="qty"
-              value={lineQty}
-              readOnly
-              tabIndex={-1}
-              className={`${readOnlyInputClassName} w-full`}
-            />
-          </label>
-          <button
-            type="button"
-            onClick={handleAddBookedInLine}
-            disabled={!canShowAddButton}
-            className={`${addButtonClassName} disabled:cursor-not-allowed disabled:opacity-50`}
-          >
-            Add
-          </button>
-        </div>
+        </label>
+        <label className="flex min-w-[12rem] flex-1 flex-col gap-1">
+          <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+            Item Description
+          </span>
+          <input
+            type="text"
+            name="item_description"
+            value={lineItemDescription}
+            readOnly
+            tabIndex={-1}
+            className={`${readOnlyInputClassName} w-full`}
+          />
+        </label>
+        <label className="flex w-28 flex-col gap-1">
+          <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+            Unit Price
+          </span>
+          <input
+            type="text"
+            name="unit_price"
+            value={lineUnitPrice}
+            readOnly
+            tabIndex={-1}
+            className={`${readOnlyInputClassName} w-full`}
+          />
+        </label>
+        <label className="flex w-24 flex-col gap-1">
+          <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+            Qty
+          </span>
+          <input
+            type="text"
+            name="qty"
+            value={lineQty}
+            readOnly
+            tabIndex={-1}
+            className={`${readOnlyInputClassName} w-full`}
+          />
+        </label>
+        <button
+          type="button"
+          onClick={handleAddBookedInLine}
+          disabled={!canShowAddButton}
+          className={`${addButtonClassName} disabled:cursor-not-allowed disabled:opacity-50`}
+        >
+          Add
+        </button>
+      </div>
+
+      <h2 className="mt-6 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+        Invoice Items
+      </h2>
+      <div className="mt-2 overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+        <table className="w-full min-w-max text-left text-sm">
+          <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/50">
+            <tr>
+              {INVOICE_ITEMS_GRID_COLUMNS.map((column) => (
+                <th
+                  key={column.key}
+                  className={`whitespace-nowrap px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300 ${
+                    column.hidden ? "hidden" : ""
+                  }`}
+                >
+                  {column.header}
+                </th>
+              ))}
+              <th className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                &nbsp;
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {invoiceItems.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={INVOICE_ITEMS_GRID_COLUMNS.length + 1}
+                  className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
+                >
+                  No invoice items added yet.
+                </td>
+              </tr>
+            ) : (
+              invoiceItems.map((row) => (
+                <tr
+                  key={row.rowKey}
+                  className="border-b border-zinc-100 last:border-b-0 dark:border-zinc-800"
+                >
+                  {INVOICE_ITEMS_GRID_COLUMNS.map((column) => (
+                    <td
+                      key={`${row.rowKey}-${column.key}`}
+                      className={`whitespace-nowrap px-4 py-2 text-zinc-800 dark:text-zinc-200 ${
+                        column.hidden ? "hidden" : ""
+                      }`}
+                    >
+                      {formatInvoiceItemGridCell(
+                        column.key,
+                        row[column.key]
+                      )}
+                    </td>
+                  ))}
+                  <td className="whitespace-nowrap px-4 py-2">
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveInvoiceItem(row.rowKey)}
+                      className="rounded bg-red-200 px-3 py-1 text-sm font-medium text-red-900 hover:bg-red-300 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/60"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
 
       {error ? (
