@@ -649,7 +649,7 @@ export function InvoiceInForm() {
         "pi_invoice_in_header",
         {
           p_supplier: parsedSupplierId,
-          p_account_number: String(parsedAccountId),
+          p_account_type_id: parsedAccountId,
           p_comments: comments,
           p_invoice_number: normalizedInvoiceNumber,
           p_invoice_date: invoiceDate,
