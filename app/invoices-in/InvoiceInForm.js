@@ -120,36 +120,34 @@ function parseInteger(value) {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
+function normalizeSingleRpcRow(data) {
+  if (Array.isArray(data)) return data[0] ?? null;
+  if (data && typeof data === "object") return data;
+  return null;
+}
+
 function isValidDateRange(from, to) {
   if (!from || !to) return false;
   return from <= to;
 }
 
-function normalizeRevenueAccountOptions(data) {
+function normalizeInvoiceInAccountOptions(data) {
   if (!Array.isArray(data)) return [];
 
   return data
     .map((row, index) => ({
       id: row.id ?? null,
-      acctNumber: row.acct_number ?? row.acctnumber ?? row.account_number ?? "",
-      acctName: row.acct_name ?? row.acctname ?? row.account_name ?? "",
-      finStatement:
-        row.fin_statement ??
-        row.finstatement ??
-        row.financial_statement ??
-        "",
+      acctName: row.acct_name ?? row.acctname ?? "",
       optionKey:
         row.id != null
-          ? `revenue-account-${row.id}`
-          : `revenue-account-row-${index}`,
+          ? `invoice-in-account-${row.id}`
+          : `invoice-in-account-row-${index}`,
     }))
     .filter((row) => row.id != null);
 }
 
-function revenueAccountOptionLabel(option) {
-  return [option.acctNumber, option.acctName, option.finStatement]
-    .map((part) => String(part ?? ""))
-    .join(" - ");
+function invoiceInAccountOptionLabel(option) {
+  return String(option.acctName ?? "");
 }
 
 function normalizeBookedInGridRows(data) {
@@ -340,9 +338,9 @@ function clearBookedInLineFields(setters) {
 }
 
 export function InvoiceInForm() {
-  const [revenueAccountId, setRevenueAccountId] = useState("");
-  const [revenueAccountOptions, setRevenueAccountOptions] = useState([]);
-  const [revenueAccountsLoading, setRevenueAccountsLoading] = useState(false);
+  const [accountId, setAccountId] = useState("");
+  const [accountOptions, setAccountOptions] = useState([]);
+  const [accountsLoading, setAccountsLoading] = useState(false);
   const [supplierId, setSupplierId] = useState("");
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(() => todayIsoDate());
@@ -365,6 +363,11 @@ export function InvoiceInForm() {
   const [adHocDescription, setAdHocDescription] = useState("");
   const [adHocUnitPrice, setAdHocUnitPrice] = useState("");
   const [adHocQty, setAdHocQty] = useState("1");
+  const [createConfirmOpen, setCreateConfirmOpen] = useState(false);
+  const [creatingInvoice, setCreatingInvoice] = useState(false);
+  const [createSuccessOpen, setCreateSuccessOpen] = useState(false);
+  const [createSuccessInvoiceNumber, setCreateSuccessInvoiceNumber] =
+    useState("");
   const [error, setError] = useState("");
 
   const bookedInColumns = useMemo(
@@ -383,22 +386,29 @@ export function InvoiceInForm() {
       parseGridNumber(adHocUnitPrice) != null &&
       parseGridNumber(adHocQty) != null
   );
+  const canShowCreateInvoiceButton = Boolean(
+    accountId &&
+      String(invoiceNumber ?? "").trim() &&
+      invoiceItems.length > 0
+  );
 
-  const loadRevenueAccounts = useCallback(async () => {
-    setRevenueAccountsLoading(true);
+  const loadAccounts = useCallback(async () => {
+    setAccountsLoading(true);
 
     try {
       const supabase = await prepareSupabaseClient();
       if (!supabase) return;
 
-      const { data, error: rpcError } = await supabase.rpc("pr_revenue_accounts");
+      const { data, error: rpcError } = await supabase.rpc(
+        "pr_invoice_in_accounts"
+      );
       if (rpcError) throw rpcError;
-      setRevenueAccountOptions(normalizeRevenueAccountOptions(data));
+      setAccountOptions(normalizeInvoiceInAccountOptions(data));
     } catch (err) {
-      setRevenueAccountOptions([]);
-      setError(err.message ?? "Failed to load revenue accounts");
+      setAccountOptions([]);
+      setError(err.message ?? "Failed to load accounts");
     } finally {
-      setRevenueAccountsLoading(false);
+      setAccountsLoading(false);
     }
   }, []);
 
@@ -461,8 +471,8 @@ export function InvoiceInForm() {
   }, [supplierId, bookedInFromDate, bookedInToDate]);
 
   useEffect(() => {
-    loadRevenueAccounts();
-  }, [loadRevenueAccounts]);
+    loadAccounts();
+  }, [loadAccounts]);
 
   useEffect(() => {
     if (!supplierId) {
@@ -556,24 +566,168 @@ export function InvoiceInForm() {
     setAdHocQty("1");
   }
 
+  function handleCreateInvoiceClick() {
+    setError("");
+    setCreateConfirmOpen(true);
+  }
+
+  function handleCreateConfirmNo() {
+    setCreateConfirmOpen(false);
+  }
+
+  function handleCloseCreateSuccess() {
+    setCreateSuccessOpen(false);
+  }
+
+  const initializePage = useCallback(() => {
+    setAccountId("");
+    setSupplierId("");
+    setInvoiceNumber("");
+    setInvoiceDate(todayIsoDate());
+    setComments("");
+    setBookedInRows([]);
+    setInvoiceItems([]);
+    clearBookedInLineFields({
+      setSelectedBookedInRowKey,
+      setLineBookInId,
+      setLineStockItemId,
+      setLineBookedInDate,
+      setLineStockCode,
+      setLineItemDescription,
+      setLineUnitPrice,
+      setLineQty,
+    });
+    setAdHocDescription("");
+    setAdHocUnitPrice("");
+    setAdHocQty("1");
+    setError("");
+  }, []);
+
+  async function submitInvoiceCreation() {
+    setCreatingInvoice(true);
+    setError("");
+
+    const parsedSupplierId = parseInteger(supplierId);
+    const parsedAccountId = parseInteger(accountId);
+    const normalizedInvoiceNumber = String(invoiceNumber ?? "").trim();
+
+    if (parsedAccountId == null) {
+      setError("Select an account before creating an invoice.");
+      setCreatingInvoice(false);
+      return;
+    }
+
+    if (!normalizedInvoiceNumber) {
+      setError("Enter an invoice number before creating an invoice.");
+      setCreatingInvoice(false);
+      return;
+    }
+
+    if (parsedSupplierId == null) {
+      setError("Select a supplier before creating an invoice.");
+      setCreatingInvoice(false);
+      return;
+    }
+
+    if (!invoiceDate) {
+      setError("Select an invoice date before creating an invoice.");
+      setCreatingInvoice(false);
+      return;
+    }
+
+    if (invoiceItems.length === 0) {
+      setError("Add at least one invoice item.");
+      setCreatingInvoice(false);
+      return;
+    }
+
+    try {
+      const supabase = await prepareSupabaseClient();
+      if (!supabase) return;
+
+      const { data: headerData, error: headerError } = await supabase.rpc(
+        "pi_invoice_in_header",
+        {
+          p_supplier: parsedSupplierId,
+          p_account_number: String(parsedAccountId),
+          p_comments: comments,
+          p_invoice_number: normalizedInvoiceNumber,
+          p_invoice_date: invoiceDate,
+        }
+      );
+      if (headerError) throw headerError;
+
+      const headerRow = normalizeSingleRpcRow(headerData);
+      if (!headerRow && headerData == null) {
+        throw new Error("Invoice header was not created.");
+      }
+
+      const newInvoiceHeaderId =
+        parseInteger(headerRow?.id) ?? parseInteger(headerData);
+      if (newInvoiceHeaderId == null) {
+        throw new Error("Invoice header id was not returned.");
+      }
+
+      const createdInvoiceNumber =
+        headerRow?.invoice_number != null
+          ? String(headerRow.invoice_number)
+          : normalizedInvoiceNumber;
+
+      for (const line of invoiceItems) {
+        const bookingInId = parseInteger(line.id) ?? 0;
+        const stockItemId = parseInteger(line.stock_item_id) ?? 0;
+        const unitPrice = parseGridNumber(line.unit_price);
+        const qty = parseGridNumber(line.quantity);
+
+        if (unitPrice == null || qty == null) {
+          throw new Error(
+            "Invoice line items have invalid unit price or quantity."
+          );
+        }
+
+        const { error: lineError } = await supabase.rpc("pi_invoice_in_line", {
+          p_invoice_in_header_id: newInvoiceHeaderId,
+          p_booking_in_id: bookingInId,
+          p_stock_item_id: stockItemId,
+          p_unit_price: unitPrice,
+          p_qty: qty,
+        });
+        if (lineError) throw lineError;
+      }
+
+      setCreateConfirmOpen(false);
+      setCreateSuccessInvoiceNumber(createdInvoiceNumber);
+      initializePage();
+      setCreateSuccessOpen(true);
+    } catch (err) {
+      setError(err.message ?? "Failed to create invoice");
+    } finally {
+      setCreatingInvoice(false);
+    }
+  }
+
+  function handleCreateOnly() {
+    void submitInvoiceCreation();
+  }
+
   return (
     <div className="mt-6 w-full max-w-6xl">
       <label className="flex w-full max-w-2xl flex-col gap-1">
         <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          Revenue Account
+          Account
         </span>
         <select
-          value={revenueAccountId}
-          onChange={(e) => setRevenueAccountId(e.target.value)}
-          disabled={revenueAccountsLoading}
+          value={accountId}
+          onChange={(e) => setAccountId(e.target.value)}
+          disabled={accountsLoading}
           className={`${inputClassName} w-full`}
         >
           <option value="">
-            {revenueAccountsLoading ? "Loading…" : SELECT_PLACEHOLDER}
+            {accountsLoading ? "Loading…" : SELECT_PLACEHOLDER}
           </option>
-          {revenueAccountOptions.map((option) => (
+          {accountOptions.map((option) => (
             <option key={option.optionKey} value={String(option.id ?? "")}>
-              {revenueAccountOptionLabel(option)}
+              {invoiceInAccountOptionLabel(option)}
             </option>
           ))}
         </select>
@@ -955,6 +1109,89 @@ export function InvoiceInForm() {
         >
           {error}
         </p>
+      ) : null}
+
+      <div className="mt-4">
+        {canShowCreateInvoiceButton ? (
+          <button
+            type="button"
+            onClick={handleCreateInvoiceClick}
+            disabled={creatingInvoice}
+            className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            CREATE INVOICE
+          </button>
+        ) : null}
+      </div>
+
+      {createConfirmOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-invoice-confirm-title"
+            className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-6 shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
+          >
+            <h3
+              id="create-invoice-confirm-title"
+              className="text-base font-semibold text-zinc-900 dark:text-zinc-50"
+            >
+              Confirm that the Details are correct..
+            </h3>
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={handleCreateConfirmNo}
+                disabled={creatingInvoice}
+                className="rounded border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+              >
+                No, Wait
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateOnly}
+                disabled={creatingInvoice}
+                className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {creatingInvoice ? "Creating…" : "Create Only"}
+              </button>
+              <button
+                type="button"
+                disabled={creatingInvoice}
+                className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {creatingInvoice ? "Creating…" : "Create and Print"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {createSuccessOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-invoice-success-title"
+            className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-6 shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
+          >
+            <p
+              id="create-invoice-success-title"
+              className="text-sm text-zinc-800 dark:text-zinc-200"
+            >
+              Invoice Number {createSuccessInvoiceNumber} has been created
+            </p>
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={handleCloseCreateSuccess}
+                className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );
