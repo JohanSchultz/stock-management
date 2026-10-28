@@ -691,6 +691,7 @@ export function InvoiceInForm() {
           p_stock_item_id: stockItemId,
           p_unit_price: unitPrice,
           p_qty: qty,
+          p_descr: String(line.item_description ?? ""),
         });
         if (lineError) throw lineError;
       }
