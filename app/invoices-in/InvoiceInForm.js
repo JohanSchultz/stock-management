@@ -603,7 +603,40 @@ export function InvoiceInForm() {
     setError("");
   }, []);
 
-  async function submitInvoiceCreation() {
+  async function printInvoiceInByNumber(invoiceNumberParam) {
+    const normalizedInvoiceNumber = String(invoiceNumberParam ?? "").trim();
+    if (!normalizedInvoiceNumber) {
+      throw new Error(
+        "Enter or create an invoice to get an invoice number before printing."
+      );
+    }
+
+    const supabase = await prepareSupabaseClient();
+    if (!supabase) return;
+
+    const [headerResult, linesResult] = await Promise.all([
+      supabase.rpc("pr_invoice_in_header_by_invno", {
+        p_invoice_number: normalizedInvoiceNumber,
+      }),
+      supabase.rpc("pr_invoice_in_lines_by_invno", {
+        p_invoice_number: normalizedInvoiceNumber,
+      }),
+    ]);
+
+    if (headerResult.error) throw headerResult.error;
+    if (linesResult.error) throw linesResult.error;
+
+    const { generateSampleInvoicePdf } = await import(
+      "@/lib/invoices/generateSampleInvoicePdf"
+    );
+    await generateSampleInvoicePdf(
+      headerResult.data,
+      linesResult.data,
+      normalizedInvoiceNumber
+    );
+  }
+
+  async function submitInvoiceCreation({ printAfterCreate = false } = {}) {
     setCreatingInvoice(true);
     setError("");
 
@@ -697,9 +730,24 @@ export function InvoiceInForm() {
       }
 
       setCreateConfirmOpen(false);
-      setCreateSuccessInvoiceNumber(createdInvoiceNumber);
-      initializePage();
-      setCreateSuccessOpen(true);
+
+      if (printAfterCreate) {
+        let printErrorMessage = "";
+        try {
+          await printInvoiceInByNumber(createdInvoiceNumber);
+        } catch (printErr) {
+          printErrorMessage =
+            printErr.message ?? "Failed to generate invoice PDF";
+        }
+        initializePage();
+        if (printErrorMessage) {
+          setError(printErrorMessage);
+        }
+      } else {
+        setCreateSuccessInvoiceNumber(createdInvoiceNumber);
+        initializePage();
+        setCreateSuccessOpen(true);
+      }
     } catch (err) {
       setError(err.message ?? "Failed to create invoice");
     } finally {
@@ -708,7 +756,11 @@ export function InvoiceInForm() {
   }
 
   function handleCreateOnly() {
-    void submitInvoiceCreation();
+    void submitInvoiceCreation({ printAfterCreate: false });
+  }
+
+  function handleCreateAndPrint() {
+    void submitInvoiceCreation({ printAfterCreate: true });
   }
 
   return (
@@ -1158,6 +1210,7 @@ export function InvoiceInForm() {
               </button>
               <button
                 type="button"
+                onClick={handleCreateAndPrint}
                 disabled={creatingInvoice}
                 className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
