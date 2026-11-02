@@ -343,6 +343,7 @@ export function InvoiceInForm() {
   const [accountsLoading, setAccountsLoading] = useState(false);
   const [supplierId, setSupplierId] = useState("");
   const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [vatPercent, setVatPercent] = useState("0");
   const [invoiceDate, setInvoiceDate] = useState(() => todayIsoDate());
   const [comments, setComments] = useState("");
   const [bookedInFromDate, setBookedInFromDate] = useState(() =>
@@ -583,6 +584,7 @@ export function InvoiceInForm() {
     setAccountId("");
     setSupplierId("");
     setInvoiceNumber("");
+    setVatPercent("0");
     setInvoiceDate(todayIsoDate());
     setComments("");
     setBookedInRows([]);
@@ -674,6 +676,17 @@ export function InvoiceInForm() {
       return;
     }
 
+    const parsedVatPercent = parseGridNumber(vatPercent);
+    if (
+      parsedVatPercent == null ||
+      parsedVatPercent < 0 ||
+      parsedVatPercent > 50
+    ) {
+      setError("Enter a VAT % between 0 and 50.");
+      setCreatingInvoice(false);
+      return;
+    }
+
     try {
       const supabase = await prepareSupabaseClient();
       if (!supabase) return;
@@ -686,6 +699,7 @@ export function InvoiceInForm() {
           p_comments: comments,
           p_invoice_number: normalizedInvoiceNumber,
           p_invoice_date: invoiceDate,
+          p_vatperc: parsedVatPercent,
         }
       );
       if (headerError) throw headerError;
@@ -793,7 +807,7 @@ export function InvoiceInForm() {
         className="mt-4 flex w-full max-w-2xl flex-col gap-1"
       />
 
-      <div className="mt-4 grid max-w-2xl grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="mt-4 grid max-w-3xl grid-cols-1 gap-4 sm:grid-cols-3">
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Invoice Number
@@ -803,6 +817,25 @@ export function InvoiceInForm() {
             name="invoice_number"
             value={invoiceNumber}
             onChange={(e) => setInvoiceNumber(e.target.value)}
+            className={`${inputClassName} w-full`}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            VAT %
+          </span>
+          <input
+            type="number"
+            name="vat_percent"
+            value={vatPercent}
+            onChange={(e) =>
+              handleDecimalInputChange(e.target.value, setVatPercent)
+            }
+            min={0}
+            max={50}
+            step="any"
+            inputMode="decimal"
             className={`${inputClassName} w-full`}
           />
         </label>
