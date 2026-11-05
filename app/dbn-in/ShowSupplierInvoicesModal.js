@@ -459,44 +459,50 @@ export function ShowSupplierInvoicesModal({
     }
   }, [open, resetModalData]);
 
-  const loadInvoiceLines = useCallback(async (invoiceNumber) => {
+  const fetchInvoiceInLinesForDbn = useCallback(async (invoiceNumber) => {
     const normalizedInvoiceNumber = String(invoiceNumber ?? "").trim();
     if (!normalizedInvoiceNumber) {
-      setLineRows([]);
       return [];
     }
 
-    clearLineDetailFields({
-      setSelectedLineRowKey,
-      setLineId,
-      setLineInvoiceNumber,
-      setLineItem,
-      setLineQty,
-      setLineUnitPrice,
-    });
-    setLinesLoading(true);
+    const supabase = await prepareSupabaseClient();
+    if (!supabase) return [];
 
-    try {
-      const supabase = await prepareSupabaseClient();
-      if (!supabase) return [];
+    const { data, error: rpcError } = await supabase.rpc(
+      "pr_invoice_in_lines_by_invno_for_dbn",
+      { p_invoice_number: normalizedInvoiceNumber }
+    );
+    if (rpcError) throw rpcError;
 
-      const { data, error: rpcError } = await supabase.rpc(
-        "pr_invoice_in_lines_by_invno_for_dbn",
-        { p_invoice_number: normalizedInvoiceNumber }
-      );
-      if (rpcError) throw rpcError;
+    return normalizeInvoiceLineRows(data);
+  }, []);
 
-      const lines = normalizeInvoiceLineRows(data);
-      setLineRows(lines);
-      return lines;
-    } catch (err) {
-      setLineRows([]);
-      onError?.(err.message ?? "Failed to load invoice line items");
-      return [];
-    } finally {
-      setLinesLoading(false);
-    }
-  }, [onError]);
+  const loadInvoiceLines = useCallback(
+    async (invoiceNumber) => {
+      clearLineDetailFields({
+        setSelectedLineRowKey,
+        setLineId,
+        setLineInvoiceNumber,
+        setLineItem,
+        setLineQty,
+        setLineUnitPrice,
+      });
+      setLinesLoading(true);
+
+      try {
+        const lines = await fetchInvoiceInLinesForDbn(invoiceNumber);
+        setLineRows(lines);
+        return lines;
+      } catch (err) {
+        setLineRows([]);
+        onError?.(err.message ?? "Failed to load invoice line items");
+        return [];
+      } finally {
+        setLinesLoading(false);
+      }
+    },
+    [fetchInvoiceInLinesForDbn, onError]
+  );
 
   const loadInvoices = useCallback(async () => {
     const parsedSupplierId = parseInteger(supplierId);
@@ -598,7 +604,7 @@ export function ShowSupplierInvoicesModal({
     onClose?.();
   }
 
-  const handleCreditEntireInvoice = useCallback(
+  const handleDebitEntireInvoice = useCallback(
     async (row) => {
       const invoiceNumber = getInvoiceNumberFromRow(row);
       const invoiceHeaderId = getInvoiceHeaderIdFromRow(row);
@@ -608,11 +614,14 @@ export function ShowSupplierInvoicesModal({
         return;
       }
 
-      setSelectedInvoiceRowKey(row.rowKey);
-      setSelectedInvoiceNumber(invoiceNumber);
-      setSelectedInvoiceHeaderId(invoiceHeaderId);
+      let lines = [];
+      try {
+        lines = await fetchInvoiceInLinesForDbn(invoiceNumber);
+      } catch (err) {
+        onError?.(err.message ?? "Failed to load invoice line items");
+        return;
+      }
 
-      const lines = await loadInvoiceLines(invoiceNumber);
       if (lines.length === 0) {
         onError?.("No line items on this invoice.");
         return;
@@ -627,7 +636,7 @@ export function ShowSupplierInvoicesModal({
       });
       onClose?.();
     },
-    [loadInvoiceLines, onClose, onCreditEntireInvoice, onError]
+    [fetchInvoiceInLinesForDbn, onClose, onCreditEntireInvoice, onError]
   );
 
   if (!open) return null;
@@ -709,11 +718,11 @@ export function ShowSupplierInvoicesModal({
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        handleCreditEntireInvoice(row);
+                        handleDebitEntireInvoice(row);
                       }}
                       className={creditEntireInvoiceButtonClassName}
                     >
-                      Credit Entire Invoice
+                      Debit Entire Invoice
                     </button>
                   ),
                 }}
@@ -807,7 +816,7 @@ export function ShowSupplierInvoicesModal({
                   onClick={handleAddCreditItem}
                   className={creditButtonClassName}
                 >
-                  Credit
+                  Debit
                 </button>
               </div>
             </div>
