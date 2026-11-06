@@ -985,7 +985,7 @@ export function DbnInForm() {
           <div className="mt-3 flex max-w-5xl flex-wrap items-end gap-3">
             <label className="flex w-full flex-col gap-1 sm:w-36">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                Invoice Number
+                Invoice No.
               </span>
               <input
                 type="text"
