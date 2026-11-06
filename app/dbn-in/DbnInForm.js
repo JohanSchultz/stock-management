@@ -87,6 +87,14 @@ function accountOptionLabel(option) {
   return String(option.acctName ?? "");
 }
 
+function getSelectedAccountText(accountId, accountOptions) {
+  const selected = accountOptions.find(
+    (option) => String(option.id ?? "") === String(accountId ?? "")
+  );
+  if (!selected) return "";
+  return accountOptionLabel(selected);
+}
+
 function normalizeBookingOutRows(data) {
   if (!Array.isArray(data)) return [];
 
@@ -243,7 +251,7 @@ function buildDbnInLineRpcParams(dbnHeaderId, row) {
 
   return {
     p_dbn_in_header_id: dbnHeaderId,
-    p_booking_out_id: hasInvoiceInId
+    p_booking_in_id: hasInvoiceInId
       ? 0
       : (parseInteger(bookOutOrInvoiceNo) ?? 0),
     p_stock_item_id: parseInteger(row.item_id) ?? 0,
@@ -559,9 +567,15 @@ export function DbnInForm() {
       return;
     }
 
-    const parsedAccountId = parseInteger(accountId);
-    if (parsedAccountId == null) {
+    if (!accountId) {
       setError("Select an account before creating a debit note.");
+      setCreatingDebitNote(false);
+      return;
+    }
+
+    const accountNumberText = getSelectedAccountText(accountId, accountOptions);
+    if (!accountNumberText) {
+      setError("Account text could not be resolved.");
       setCreatingDebitNote(false);
       return;
     }
@@ -580,7 +594,7 @@ export function DbnInForm() {
         "pi_dbn_in_header",
         {
           p_supplier_id: parsedSupplierId,
-          p_account_type_id: parsedAccountId,
+          p_account_number: accountNumberText,
           p_comments: comments,
         }
       );
