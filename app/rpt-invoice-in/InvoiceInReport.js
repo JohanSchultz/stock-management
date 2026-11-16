@@ -352,7 +352,9 @@ export function InvoiceInReport() {
     setError("");
 
     try {
-      await printInvoiceInByNumber(normalizedInvoiceNumber);
+      await printInvoiceInByNumber(normalizedInvoiceNumber, {
+        documentTitle: "Supplier Tax Invoice",
+      });
     } catch (err) {
       setError(err.message ?? "Failed to generate invoice PDF");
     } finally {
