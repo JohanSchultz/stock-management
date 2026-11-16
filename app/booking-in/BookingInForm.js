@@ -1951,6 +1951,9 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                   <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                     Book-in type
                     <RequiredMarker />
+                    <span className="font-normal text-emerald-600 dark:text-emerald-400">
+                      {"  (for Purchases, select the relevant Order below)"}
+                    </span>
                   </span>
                   <select
                     value={bookingInTypeId}
