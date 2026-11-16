@@ -1952,7 +1952,7 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
                     Book-in type
                     <RequiredMarker />
                     <span className="font-normal text-emerald-600 dark:text-emerald-400">
-                      {"  (for Purchases, select the relevant Order below)"}
+                      {"  (for Purchases, select the relevant Order from the Orders grid below)"}
                     </span>
                   </span>
                   <select
@@ -2289,6 +2289,9 @@ export function BookingInForm({ variant = "booking-in" } = {}) {
 
       {!isOrdersIn ? (
         <div className="mt-6">
+          <p className="mb-1 text-base font-bold text-zinc-800 dark:text-zinc-200">
+            Orders
+          </p>
           <p className="mb-2 text-sm font-bold text-zinc-800 dark:text-zinc-200">
             Grid Filtering:
           </p>
