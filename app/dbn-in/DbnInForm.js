@@ -1,6 +1,5 @@
 "use client";
 
-import { CustomerSelect } from "@/components/CustomerSelect";
 import { SupplierSelect } from "@/components/SupplierSelect";
 import { ShowSupplierInvoicesModal } from "./ShowSupplierInvoicesModal";
 import {
@@ -318,7 +317,7 @@ export function DbnInForm() {
   const [supplierId, setSupplierId] = useState("");
   const [supplierLabel, setSupplierLabel] = useState("");
   const [showInvoicesOpen, setShowInvoicesOpen] = useState(false);
-  const [filterCustomerId, setFilterCustomerId] = useState("");
+  const [filterSupplierId, setFilterSupplierId] = useState("");
   const [filterFromDate, setFilterFromDate] = useState(() =>
     currentMonthStartIsoDate()
   );
@@ -342,6 +341,7 @@ export function DbnInForm() {
   const [otherItemQtyDisabled, setOtherItemQtyDisabled] = useState(false);
   const [otherItem, setOtherItem] = useState("");
   const [otherItemPrice, setOtherItemPrice] = useState("");
+  const [otherItemPriceMax, setOtherItemPriceMax] = useState(null);
   const [dbnLineItems, setDbnLineItems] = useState([]);
   const [createConfirmOpen, setCreateConfirmOpen] = useState(false);
   const [creatingDebitNote, setCreatingDebitNote] = useState(false);
@@ -409,12 +409,12 @@ export function DbnInForm() {
       const supabase = await prepareSupabaseClient();
       if (!supabase) return;
 
-      const pCustomerId = parseInteger(filterCustomerId) ?? 0;
+      const pSupplierId = parseInteger(filterSupplierId) ?? 0;
 
       const { data, error: rpcError } = await supabase.rpc(
         "pr_dbn_booking_outs",
         {
-          p_customer_id: pCustomerId,
+          p_supplier_id: pSupplierId,
           p_from: filterFromDate || null,
           p_to: filterToDate || null,
           p_booking_out_id: parseBookingOutIdParam(filterBookingOutNumber),
@@ -430,7 +430,7 @@ export function DbnInForm() {
       setBookingsOutGridLoading(false);
     }
   }, [
-    filterCustomerId,
+    filterSupplierId,
     filterFromDate,
     filterToDate,
     filterBookingOutNumber,
@@ -453,7 +453,7 @@ export function DbnInForm() {
       setComments("");
       setBookingOutRows([]);
       setDbnLineItems([]);
-      setFilterCustomerId("");
+      setFilterSupplierId("");
       setFilterFromDate(currentMonthStartIsoDate());
       setFilterToDate(currentMonthEndIsoDate());
       setFilterBookingOutNumber("");
@@ -525,7 +525,7 @@ export function DbnInForm() {
     setSupplierId("");
     setSupplierLabel("");
     setShowInvoicesOpen(false);
-    setFilterCustomerId("");
+    setFilterSupplierId("");
     setFilterFromDate(currentMonthStartIsoDate());
     setFilterToDate(currentMonthEndIsoDate());
     setFilterBookingOutNumber("");
@@ -547,6 +547,7 @@ export function DbnInForm() {
     setOtherItemQty("");
     setOtherItemQtyDisabled(false);
     setOtherItemPrice("");
+    setOtherItemPriceMax(null);
     setDbnLineItems([]);
     setDbnId("");
     setDbnNo("");
@@ -657,8 +658,10 @@ export function DbnInForm() {
     setInvoiceId(String(nextInvoiceId ?? ""));
     setInvoiceNo(String(invoiceNumber ?? ""));
     setOtherItem(`Debited invoice ${String(invoiceNumber ?? "").trim()}`);
-    setOtherItemPrice(
-      Number.isFinite(lineTotalSum) ? String(lineTotalSum) : ""
+    const priceText = Number.isFinite(lineTotalSum) ? String(lineTotalSum) : "";
+    setOtherItemPrice(priceText);
+    setOtherItemPriceMax(
+      Number.isFinite(lineTotalSum) ? formatGridQtyOrUnitPrice(lineTotalSum) : null
     );
     setOtherItemQty("");
     setOtherItemQtyDisabled(true);
@@ -681,7 +684,11 @@ export function DbnInForm() {
       `Debited invoice ${String(invoiceNumber ?? "").trim()}: ${String(item ?? "").trim()}`
     );
     setOtherItemQty(String(qty ?? ""));
-    setOtherItemPrice(Number.isFinite(linePrice) ? String(linePrice) : "");
+    const priceText = Number.isFinite(linePrice) ? String(linePrice) : "";
+    setOtherItemPrice(priceText);
+    setOtherItemPriceMax(
+      Number.isFinite(linePrice) ? formatGridQtyOrUnitPrice(linePrice) : null
+    );
     setOtherItemQtyDisabled(false);
     setShowInvoicesOpen(false);
     setError("");
@@ -713,7 +720,24 @@ export function DbnInForm() {
     setOtherItemQty("");
     setOtherItemQtyDisabled(false);
     setOtherItemPrice("");
+    setOtherItemPriceMax(null);
     setError("");
+  }
+
+  function handleOtherItemPriceChange(nextValue) {
+    const maxAmount = parseGridNumber(otherItemPriceMax);
+    if (maxAmount != null) {
+      const parsed = parseGridNumber(nextValue);
+      if (parsed != null && parsed > maxAmount) {
+        setOtherItemPrice(formatGridQtyOrUnitPrice(maxAmount));
+        return;
+      }
+    }
+    if (nextValue === "" || nextValue === "-" || nextValue.endsWith(".")) {
+      setOtherItemPrice(nextValue);
+      return;
+    }
+    setOtherItemPrice(nextValue);
   }
 
   return (
@@ -786,9 +810,9 @@ export function DbnInForm() {
           <div className="mt-2 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
             <div className="flex flex-wrap items-end gap-2 p-2">
               <div className="flex flex-1 flex-wrap items-end gap-2 rounded-md bg-zinc-100 p-2 dark:bg-zinc-800/60">
-                <CustomerSelect
-                  value={filterCustomerId}
-                  onChange={setFilterCustomerId}
+                <SupplierSelect
+                  value={filterSupplierId}
+                  onChange={setFilterSupplierId}
                   className="flex w-full min-w-[7rem] max-w-[14rem] flex-col gap-0.5 [&_span]:text-xs [&_span]:font-medium [&_select]:rounded [&_select]:border [&_select]:border-zinc-300 [&_select]:bg-white [&_select]:px-2 [&_select]:py-1 [&_select]:text-xs dark:[&_select]:border-zinc-600 dark:[&_select]:bg-zinc-800"
                 />
                 <label className="flex flex-col gap-0.5">
@@ -1050,8 +1074,13 @@ export function DbnInForm() {
                 step="any"
                 inputMode="decimal"
                 min={0}
+                max={
+                  otherItemPriceMax != null && otherItemPriceMax !== ""
+                    ? otherItemPriceMax
+                    : undefined
+                }
                 value={otherItemPrice}
-                onChange={(e) => setOtherItemPrice(e.target.value)}
+                onChange={(e) => handleOtherItemPriceChange(e.target.value)}
                 className={`${inputClassName} w-full`}
               />
             </label>

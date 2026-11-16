@@ -3,7 +3,7 @@ import { DebitNoteInReport } from "./DebitNoteInReport";
 
 export default function RptDebitNoteInPage() {
   return (
-    <AppShell title="Debit Note In Report">
+    <AppShell title="Credit Note In Report">
       <DebitNoteInReport />
     </AppShell>
   );

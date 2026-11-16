@@ -3,7 +3,7 @@ import { DbnInForm } from "./DbnInForm";
 
 export default function DbnInPage() {
   return (
-    <AppShell title="Debit Notes In">
+    <AppShell title="Credit Notes In">
       <DbnInForm />
     </AppShell>
   );

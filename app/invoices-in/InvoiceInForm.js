@@ -344,7 +344,7 @@ export function InvoiceInForm() {
   const [accountsLoading, setAccountsLoading] = useState(false);
   const [supplierId, setSupplierId] = useState("");
   const [invoiceNumber, setInvoiceNumber] = useState("");
-  const [vatPercent, setVatPercent] = useState("0");
+  const [vatPercent, setVatPercent] = useState("15");
   const [invoiceDate, setInvoiceDate] = useState(() => todayIsoDate());
   const [comments, setComments] = useState("");
   const [bookedInFromDate, setBookedInFromDate] = useState(() =>
@@ -585,7 +585,7 @@ export function InvoiceInForm() {
     setAccountId("");
     setSupplierId("");
     setInvoiceNumber("");
-    setVatPercent("0");
+    setVatPercent("15");
     setInvoiceDate(todayIsoDate());
     setComments("");
     setBookedInRows([]);
@@ -716,7 +716,9 @@ export function InvoiceInForm() {
       if (printAfterCreate) {
         let printErrorMessage = "";
         try {
-          await printInvoiceInByNumber(createdInvoiceNumber);
+          await printInvoiceInByNumber(createdInvoiceNumber, {
+            documentTitle: "Supplier Tax Invoice",
+          });
         } catch (printErr) {
           printErrorMessage =
             printErr.message ?? "Failed to generate invoice PDF";
