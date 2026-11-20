@@ -22,8 +22,10 @@ const SELECT_PLACEHOLDER = " -SELECT- ";
 
 const BOOK_OUT_DATE_COLUMN_KEYS = new Set([
   "date_placed",
+  "book_in_date",
   "book_out_date",
   "order_placed_date",
+  "booked_in_date",
   "booked_out_date",
   "created_at",
 ]);
@@ -98,7 +100,7 @@ function normalizeBookingOutRows(data) {
   if (!Array.isArray(data)) return [];
 
   return data.map((row, index) => {
-    const bookingKey = row.booking_out_id ?? row.id;
+    const bookingKey = row.booking_in_id ?? row.booking_out_id ?? row.id;
     return {
       ...row,
       rowKey:
@@ -126,10 +128,12 @@ function getColumnKeys(rows) {
 }
 
 function formatColumnHeader(key) {
-  if (key === "id" || key === "booking_out_id") return "Book Out Number";
+  if (key === "id" || key === "booking_in_id" || key === "booking_out_id") {
+    return "Book In Number";
+  }
   if (key === "customer") return "Customer";
   if (key === "stock_item_id") return "Stock Item Id";
-  if (BOOK_OUT_DATE_COLUMN_KEYS.has(key)) return "Book Out Date";
+  if (BOOK_OUT_DATE_COLUMN_KEYS.has(key)) return "Book In Date";
   return key.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
@@ -189,7 +193,7 @@ function mergeDbnItemColumnKeys(rows) {
 
 function formatDbnItemColumnHeader(key) {
   if (key === "item_id") return "Item Id";
-  if (key === "book_out_no") return "Book Out No.";
+  if (key === "book_out_no") return "Book In No.";
   if (key === "invoice_no") return "Invoice No.";
   if (key === "unit_price") return "(Unit) Price";
   return formatColumnHeader(key);
@@ -269,7 +273,7 @@ function parseBookingOutIdParam(value) {
 }
 
 function getBookOutNumberFromRow(row) {
-  const value = row.booking_out_id ?? row.id;
+  const value = row.booking_in_id ?? row.booking_out_id ?? row.id;
   if (value == null || value === "") return "";
   return String(value);
 }
@@ -412,12 +416,12 @@ export function DbnInForm() {
       const pSupplierId = parseInteger(filterSupplierId) ?? 0;
 
       const { data, error: rpcError } = await supabase.rpc(
-        "pr_dbn_booking_outs",
+        "pr_dbn_booking_ins",
         {
           p_supplier_id: pSupplierId,
           p_from: filterFromDate || null,
           p_to: filterToDate || null,
-          p_booking_out_id: parseBookingOutIdParam(filterBookingOutNumber),
+          p_booking_in_id: parseBookingOutIdParam(filterBookingOutNumber),
         }
       );
       if (rpcError) throw rpcError;
@@ -425,7 +429,7 @@ export function DbnInForm() {
       setBookingOutRows(normalizeBookingOutRows(data));
     } catch (err) {
       setBookingOutRows([]);
-      setError(err.message ?? "Failed to load bookings out");
+      setError(err.message ?? "Failed to load bookings in");
     } finally {
       setBookingsOutGridLoading(false);
     }
@@ -805,7 +809,7 @@ export function DbnInForm() {
           {showBookingsOutGrid ? (
             <>
           <h2 className="mt-6 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Bookings Out
+            Bookings In
           </h2>
           <div className="mt-2 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
             <div className="flex flex-wrap items-end gap-2 p-2">
@@ -837,11 +841,11 @@ export function DbnInForm() {
                 </label>
                 <label className="flex w-[7.5rem] flex-col gap-0.5 sm:w-[7.875rem]">
                   <span className={bookingsOutFilterLabelClassName}>
-                    Booking Out No.
+                    Booking In No.
                   </span>
                   <input
                     type="text"
-                    name="filter_booking_out_number"
+                    name="filter_booking_in_number"
                     inputMode="numeric"
                     value={filterBookingOutNumber}
                     onChange={(e) => setFilterBookingOutNumber(e.target.value)}
@@ -854,7 +858,7 @@ export function DbnInForm() {
                 onClick={handleSearchBookingsOutClick}
                 disabled={bookingsOutGridLoading}
                 className={bookingsOutFilterSearchLinkClassName}
-                aria-label="Search bookings out"
+                aria-label="Search bookings in"
               >
                 {">>"}
               </button>
@@ -895,7 +899,7 @@ export function DbnInForm() {
                       colSpan={Math.max(bookingOutColumns.length, 1)}
                       className="px-4 py-3 text-zinc-500 dark:text-zinc-400"
                     >
-                      No bookings out found.
+                      No bookings in found.
                     </td>
                   </tr>
                 ) : (
@@ -928,11 +932,11 @@ export function DbnInForm() {
           <div className="mt-4 grid max-w-5xl grid-cols-1 items-end gap-3 sm:grid-cols-[7rem_minmax(10rem,1fr)_7rem_8rem_auto] sm:gap-x-3 sm:gap-y-3">
             <label className="flex w-full flex-col gap-1 sm:w-auto">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                Book Out No.
+                Book In No.
               </span>
               <input
                 type="text"
-                name="book_out_no"
+                name="book_in_no"
                 value={bookOutNo}
                 readOnly
                 tabIndex={-1}
@@ -1169,7 +1173,7 @@ export function DbnInForm() {
               disabled={creatingDebitNote || dbnLineItems.length === 0}
               className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              CREATE DEBIT NOTE
+              CREATE CREDIT SUPPLIER NOTE
             </button>
           </div>
         </>

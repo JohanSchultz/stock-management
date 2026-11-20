@@ -722,7 +722,7 @@ export function ShowSupplierInvoicesModal({
                       }}
                       className={creditEntireInvoiceButtonClassName}
                     >
-                      Debit Entire Invoice
+                      Credit Entire Invoice
                     </button>
                   ),
                 }}
@@ -816,7 +816,7 @@ export function ShowSupplierInvoicesModal({
                   onClick={handleAddCreditItem}
                   className={creditButtonClassName}
                 >
-                  Debit
+                  Credit
                 </button>
               </div>
             </div>
