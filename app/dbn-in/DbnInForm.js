@@ -1173,7 +1173,7 @@ export function DbnInForm() {
               disabled={creatingDebitNote || dbnLineItems.length === 0}
               className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              CREATE CREDIT SUPPLIER NOTE
+              CREATE SUPPLIER CREDIT NOTE
             </button>
           </div>
         </>
